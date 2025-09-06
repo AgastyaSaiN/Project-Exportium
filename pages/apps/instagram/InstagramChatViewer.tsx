@@ -82,6 +82,13 @@ const MoonIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
     </svg>
 );
 
+const CameraIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.776 48.776 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
+    </svg>
+);
+
 
 // --- Helper Functions ---
 const formatTimestamp = (timestamp_ms: number) => new Date(timestamp_ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -104,6 +111,17 @@ const formatDateSeparator = (timestamp_ms: number) => {
     if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
     return date.toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 };
+
+// IMPORTANT: By including the full class name string here, we ensure Tailwind's JIT compiler
+// recognizes and generates the necessary CSS for these dynamic gradient classes.
+const THEMES: Record<string, { name: string, gradient: string, ring: string }> = {
+    default: { name: 'Default', gradient: 'bg-gradient-to-br from-pink-500 to-rose-500', ring: 'ring-pink-500' },
+    ocean: { name: 'Ocean', gradient: 'bg-gradient-to-br from-blue-500 to-cyan-400', ring: 'ring-blue-500' },
+    sunset: { name: 'Sunset', gradient: 'bg-gradient-to-br from-amber-500 to-orange-600', ring: 'ring-amber-500' },
+    forest: { name: 'Forest', gradient: 'bg-gradient-to-br from-green-500 to-emerald-500', ring: 'ring-green-500' },
+    amethyst: { name: 'Amethyst', gradient: 'bg-gradient-to-br from-purple-500 to-indigo-600', ring: 'ring-purple-500' }
+};
+
 
 // --- Sub-components ---
 
@@ -129,13 +147,30 @@ const HighlightedText: React.FC<{ text: string; highlight: string }> = ({ text, 
 };
 
 
-const UserAvatar: React.FC<{ name: string; className?: string }> = React.memo(({ name, className = '' }) => {
+const UserAvatar: React.FC<{ name: string; className?: string; imageUrl?: string | null; onClick?: (e: React.MouseEvent<HTMLDivElement>) => void; }> = React.memo(({ name, className = '', imageUrl, onClick }) => {
     const initial = name.charAt(0).toUpperCase();
     const colors = ['bg-pink-200 text-pink-700', 'bg-blue-200 text-blue-700', 'bg-green-200 text-green-700', 'bg-purple-200 text-purple-700', 'bg-yellow-200 text-yellow-700'];
     const colorClass = colors[name.charCodeAt(0) % colors.length];
-    return (
-        <div className={`rounded-full ${colorClass} flex items-center justify-center font-bold flex-shrink-0 ${className}`}>
+
+    const content = imageUrl ? (
+        <img src={imageUrl} alt={name} className={`rounded-full object-cover w-full h-full ${className}`} />
+    ) : (
+        <div className={`rounded-full ${colorClass} flex items-center justify-center font-bold w-full h-full ${className}`}>
             {initial}
+        </div>
+    );
+
+    return (
+        <div
+            className={`relative flex-shrink-0 ${onClick ? 'cursor-pointer' : ''} ${className}`}
+            onClick={onClick}
+        >
+            <div className="w-full h-full">{content}</div>
+            {onClick && (
+                <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                    <CameraIcon className="w-1/2 h-1/2 text-white" />
+                </div>
+            )}
         </div>
     );
 });
@@ -181,8 +216,10 @@ const MessageBubble: React.FC<{
     searchQuery?: string;
     isSearching: boolean;
     onJumpFromSearch?: (messageId: string) => void;
-}> = ({ message, isOwnMessage, isFirstInGroup, isLastInGroup, searchQuery, isSearching, onJumpFromSearch }) => {
-    const bubbleColor = isOwnMessage ? 'bg-gradient-to-br from-pink-500 to-rose-500 text-white' : 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 shadow-sm';
+    theme: string;
+}> = ({ message, isOwnMessage, isFirstInGroup, isLastInGroup, searchQuery, isSearching, onJumpFromSearch, theme }) => {
+    const themeClasses = THEMES[theme]?.gradient || THEMES.default.gradient;
+    const bubbleColor = isOwnMessage ? `${themeClasses} text-white` : 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 shadow-sm';
     
     const roundingClasses = isOwnMessage
         ? `${isFirstInGroup ? 'rounded-t-2xl' : ''} ${isLastInGroup ? 'rounded-b-2xl' : ''} rounded-l-2xl`
@@ -213,14 +250,17 @@ const MessageGroup: React.FC<{
     searchQuery?: string;
     isSearching: boolean;
     onJumpFromSearch?: (messageId: string) => void;
-}> = ({ messages, isOwnMessage, showAvatar, searchQuery, isSearching, onJumpFromSearch }) => {
+    customAvatarUrl?: string | null;
+    onAvatarClick?: () => void;
+    theme: string;
+}> = ({ messages, isOwnMessage, showAvatar, searchQuery, isSearching, onJumpFromSearch, customAvatarUrl, onAvatarClick, theme }) => {
     if (!messages.length) return null;
     const senderName = messages[0].sender_name;
 
     return (
         <div className={`flex flex-col gap-0.5 w-full ${isOwnMessage ? 'items-end' : 'items-start'}`}>
             <div className={`flex gap-3 ${isOwnMessage ? 'flex-row-reverse' : 'flex-row'}`}>
-                {!isOwnMessage && showAvatar && <UserAvatar name={senderName} className="w-9 h-9 self-end" />}
+                {!isOwnMessage && showAvatar && <UserAvatar name={senderName} className="w-9 h-9 self-end" imageUrl={customAvatarUrl} onClick={onAvatarClick ? (e) => { e.stopPropagation(); onAvatarClick(); } : undefined} />}
                 <div className="flex flex-col gap-0.5">
                     {!isOwnMessage && showAvatar && <p className="text-sm font-bold text-slate-700 dark:text-slate-300 ml-3 mb-1">{senderName}</p>}
                     {messages.map((msg, index) => (
@@ -233,6 +273,7 @@ const MessageGroup: React.FC<{
                             searchQuery={searchQuery}
                             isSearching={isSearching}
                             onJumpFromSearch={onJumpFromSearch}
+                            theme={theme}
                         />
                     ))}
                 </div>
@@ -260,7 +301,19 @@ const SettingsModal: React.FC<{
     onStrategyChange: (strategy: LoadingStrategy) => void;
     showAvatars: boolean;
     onShowAvatarsChange: (show: boolean) => void;
-}> = ({ isOpen, onClose, currentStrategy, onStrategyChange, showAvatars, onShowAvatarsChange }) => {
+    currentTheme: string;
+    onThemeChange: (theme: string) => void;
+    onUploadBackground: () => void;
+    onRemoveBackground: () => void;
+    participants: { name: string }[];
+    currentAlignment: string;
+    onAlignmentChange: (name: string) => void;
+    customAvatars: Record<string, string>;
+
+}> = ({ 
+    isOpen, onClose, currentStrategy, onStrategyChange, showAvatars, onShowAvatarsChange, currentTheme, onThemeChange, onUploadBackground, onRemoveBackground,
+    participants, currentAlignment, onAlignmentChange, customAvatars
+}) => {
     if (!isOpen) return null;
 
     return (
@@ -272,6 +325,58 @@ const SettingsModal: React.FC<{
                 </div>
                 
                 <div className="space-y-6">
+                    <div>
+                        <h3 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Message Alignment</h3>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">Choose which user's messages appear on the right.</p>
+                        <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
+                            {participants.map(p => (
+                                <div
+                                    key={p.name}
+                                    onClick={() => onAlignmentChange(p.name)}
+                                    className={`p-3 border rounded-lg cursor-pointer transition-all flex items-center gap-3 ${currentAlignment === p.name ? 'border-pink-500 bg-pink-50 dark:bg-pink-900/20 ring-2 ring-pink-200 dark:border-pink-500' : 'border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500'}`}
+                                >
+                                    <UserAvatar name={p.name} className="w-8 h-8" imageUrl={customAvatars[p.name]} />
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200">{p.name}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3 className="font-semibold text-slate-800 dark:text-slate-200 mb-3">Appearance</h3>
+                         <div className="flex items-center justify-between p-4 border border-slate-300 dark:border-slate-600 rounded-lg mb-3">
+                            <label htmlFor="showAvatars" className="font-semibold text-slate-800 dark:text-slate-200 cursor-pointer">Show Avatars</label>
+                            <button
+                                id="showAvatars"
+                                role="switch"
+                                aria-checked={showAvatars}
+                                onClick={() => onShowAvatarsChange(!showAvatars)}
+                                className={`${showAvatars ? 'bg-pink-500' : 'bg-slate-300 dark:bg-slate-600'} relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-pink-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800`}
+                            >
+                                <span className={`${showAvatars ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition-transform`} />
+                            </button>
+                        </div>
+                         <div className="p-4 border border-slate-300 dark:border-slate-600 rounded-lg">
+                            <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-3">Chat Background</h4>
+                            <div className="flex gap-2">
+                                <button onClick={onUploadBackground} className="flex-1 px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-700 rounded-md hover:bg-slate-200 dark:hover:bg-slate-600 transition">Upload Image</button>
+                                <button onClick={onRemoveBackground} className="flex-1 px-4 py-2 text-sm font-semibold text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/30 rounded-md hover:bg-red-200 dark:hover:bg-red-900/50 transition">Remove</button>
+                            </div>
+                        </div>
+                    </div>
+                     <div>
+                        <h3 className="font-semibold text-slate-800 dark:text-slate-200 mb-3">Chat Theme</h3>
+                        <div className="flex items-center justify-around p-3 border border-slate-300 dark:border-slate-600 rounded-lg">
+                            {Object.entries(THEMES).map(([themeKey, { name, gradient, ring }]) => (
+                                <button
+                                    key={themeKey}
+                                    title={name}
+                                    onClick={() => onThemeChange(themeKey)}
+                                    className={`w-8 h-8 rounded-full ${gradient} transition-all duration-200 ${currentTheme === themeKey ? `ring-2 ring-offset-2 ${ring} dark:ring-offset-slate-800` : 'ring-0'}`}
+                                />
+                            ))}
+                        </div>
+                    </div>
                     <div>
                         <h3 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Message Loading</h3>
                         <div className="space-y-2">
@@ -289,21 +394,6 @@ const SettingsModal: React.FC<{
                                 <h4 className="font-semibold text-slate-800 dark:text-slate-200">Load All Messages</h4>
                                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Loads the entire conversation at once. Useful for searching, but may cause lag on very large chats.</p>
                             </div>
-                        </div>
-                    </div>
-                    <div>
-                        <h3 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Appearance</h3>
-                        <div className="flex items-center justify-between p-4 border border-slate-300 dark:border-slate-600 rounded-lg">
-                            <label htmlFor="showAvatars" className="font-semibold text-slate-800 dark:text-slate-200 cursor-pointer">Show Avatars</label>
-                            <button
-                                id="showAvatars"
-                                role="switch"
-                                aria-checked={showAvatars}
-                                onClick={() => onShowAvatarsChange(!showAvatars)}
-                                className={`${showAvatars ? 'bg-pink-500' : 'bg-slate-300 dark:bg-slate-600'} relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-pink-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800`}
-                            >
-                                <span className={`${showAvatars ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition-transform`} />
-                            </button>
                         </div>
                     </div>
                 </div>
@@ -427,9 +517,16 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState<'messages' | 'media'>('messages');
     const [scrollToMessageId, setScrollToMessageId] = useState<string | null>(null);
-    
+    const [customAvatars, setCustomAvatars] = useState<Record<string, string>>({});
+    const [chatThemes, setChatThemes] = useState<Record<string, string>>({});
+    const [chatBackgrounds, setChatBackgrounds] = useState<Record<string, string | null>>({});
+    const [messageAlignments, setMessageAlignments] = useState<Record<string, string>>({});
+
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const topSentinelRef = useRef<HTMLDivElement>(null);
+    const avatarInputRef = useRef<HTMLInputElement>(null);
+    const backgroundInputRef = useRef<HTMLInputElement>(null);
+    const userForAvatarChange = useRef<string | null>(null);
     
     const [displayedMessageCount, setDisplayedMessageCount] = useState(MESSAGES_PER_PAGE);
     const scrollState = useRef({ isRestoring: false, oldScrollHeight: 0 });
@@ -437,6 +534,11 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
     const selectedChat = useMemo(() => loadedChats[selectedChatId || ''] || null, [selectedChatId, loadedChats]);
     
     const isSearching = useMemo(() => searchQuery.trim().length > 0, [searchQuery]);
+    
+    const rightAlignedUser = useMemo(() => {
+        if (!selectedChatId) return ownerName;
+        return messageAlignments[selectedChatId] || ownerName;
+    }, [selectedChatId, messageAlignments, ownerName]);
 
     const { displayedMessages, hasMoreMessages, messageGroups, searchResultCount } = useMemo(() => {
         if (!selectedChat?.messages) return { displayedMessages: [], hasMoreMessages: false, messageGroups: [], searchResultCount: null };
@@ -515,12 +617,57 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
 
             return () => clearTimeout(timer);
         } else {
-            // Element not found, reset state
             setScrollToMessageId(null);
         }
 
     }, [scrollToMessageId, messageGroups]);
 
+    const handleAvatarChangeClick = (userName: string) => {
+        userForAvatarChange.current = userName;
+        avatarInputRef.current?.click();
+    };
+
+    const handleAvatarFileSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        const userName = userForAvatarChange.current;
+        if (!file || !userName) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const dataUrl = e.target?.result as string;
+            if (dataUrl) {
+                setCustomAvatars(prev => ({...prev, [userName]: dataUrl}));
+            }
+        };
+        reader.readAsDataURL(file);
+
+        if(event.target) event.target.value = '';
+    };
+
+    const handleBackgroundChangeClick = () => {
+        backgroundInputRef.current?.click();
+    };
+
+    const handleBackgroundFileSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file || !selectedChatId) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const dataUrl = e.target?.result as string;
+            if (dataUrl) {
+                setChatBackgrounds(prev => ({ ...prev, [selectedChatId]: dataUrl }));
+            }
+        };
+        reader.readAsDataURL(file);
+        if (event.target) event.target.value = '';
+    };
+    
+    const handleRemoveBackground = () => {
+        if (selectedChatId) {
+            setChatBackgrounds(prev => ({ ...prev, [selectedChatId]: null }));
+        }
+    };
 
     const handleStrategyChange = (newStrategy: LoadingStrategy) => {
         setLoadingStrategy(newStrategy);
@@ -535,32 +682,21 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
 
     const handleJumpToMessage = useCallback((item: MediaItem) => {
         if (!selectedChat) return;
-
-        // Ensure the message is available to be rendered
         if (loadingStrategy === 'infinite' && displayedMessageCount < selectedChat.messages.length) {
             setDisplayedMessageCount(selectedChat.messages.length);
         }
-        
         setActiveTab('messages');
         setScrollToMessageId(item.messageId);
-
     }, [selectedChat, loadingStrategy, displayedMessageCount]);
     
     const handleJumpFromSearch = useCallback((messageId: string) => {
         if (!selectedChat) return;
-
-        // If using infinite scroll, ensure all messages are loaded so the target can be found.
         if (loadingStrategy === 'infinite' && displayedMessageCount < selectedChat.messages.length) {
             setDisplayedMessageCount(selectedChat.messages.length);
         }
-        
-        // Clear search to show the full conversation, then set the scroll target.
-        // The useLayoutEffect for scrollToMessageId will handle the actual scrolling and highlighting.
         setSearchQuery('');
         setScrollToMessageId(messageId);
-
     }, [selectedChat, loadingStrategy, displayedMessageCount]);
-
 
     const handleSelectChat = useCallback(async (chat: Chat) => {
         setIsSidebarVisible(false);
@@ -635,21 +771,54 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
         if (scrollState.current.isRestoring) {
             container.scrollTop = container.scrollHeight - scrollState.current.oldScrollHeight;
             scrollState.current.isRestoring = false;
-        } else if (!scrollToMessageId) { // Prevent auto-scrolling to bottom when we are jumping to a message
+        } else if (!scrollToMessageId) {
             container.scrollTop = container.scrollHeight;
         }
     }, [displayedMessages, scrollToMessageId]);
 
+    const selectedChatTheme = chatThemes[selectedChatId || ''] || 'default';
+    const selectedChatBackground = chatBackgrounds[selectedChatId || ''] || null;
+
+    const messageContainerStyle = selectedChatBackground ? {
+        backgroundImage: `url(${selectedChatBackground})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+    } : {};
+    
+    const messageContainerClasses = selectedChatBackground ? '' : "bg-slate-50 dark:bg-slate-900 bg-[url('data:image/svg+xml,%3Csvg%20width%3D%224%22%20height%3D%224%22%20viewBox%3D%220%200%204%204%22%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%3E%3Cpath%20d%3D%22M1%203h1v1H1V3zm2-2h1v1H3V1z%22%20fill%3D%22%2394a3b8%22%20fill-opacity%3D%220.1%22%20fill-rule%3D%22evenodd%22%3E%3C/path%3E%3C/svg%3E')]";
+
     return (
         <div className="flex w-full h-full bg-white dark:bg-slate-900 overflow-hidden relative">
-            <SettingsModal 
+            <input 
+                type="file" 
+                ref={avatarInputRef} 
+                className="hidden" 
+                accept="image/png, image/jpeg, image/gif"
+                onChange={handleAvatarFileSelected}
+            />
+            <input
+                type="file"
+                ref={backgroundInputRef}
+                className="hidden"
+                accept="image/png, image/jpeg, image/gif"
+                onChange={handleBackgroundFileSelected}
+            />
+            {selectedChat && <SettingsModal 
                 isOpen={isSettingsOpen}
                 onClose={() => setIsSettingsOpen(false)}
                 currentStrategy={loadingStrategy}
                 onStrategyChange={handleStrategyChange}
                 showAvatars={showAvatars}
                 onShowAvatarsChange={setShowAvatars}
-            />
+                currentTheme={selectedChatTheme}
+                onThemeChange={(theme) => selectedChatId && setChatThemes(prev => ({...prev, [selectedChatId]: theme}))}
+                onUploadBackground={handleBackgroundChangeClick}
+                onRemoveBackground={handleRemoveBackground}
+                participants={selectedChat.participants}
+                currentAlignment={rightAlignedUser}
+                onAlignmentChange={(name) => selectedChatId && setMessageAlignments(prev => ({ ...prev, [selectedChatId]: name }))}
+                customAvatars={customAvatars}
+            />}
             <aside className={`absolute md:relative w-full md:w-1/3 lg:w-1/4 border-r border-slate-200 dark:border-slate-700 flex flex-col transition-transform duration-300 ease-in-out z-10 bg-white dark:bg-slate-800 h-full ${isSidebarVisible ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
                 <header className="p-4 border-b border-slate-200 dark:border-slate-700">
                     <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200">Your Chats</h2>
@@ -658,7 +827,14 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
                 <div className="flex-grow overflow-y-auto">
                     {chats.map(chat => (
                         <div key={chat.id} onClick={() => handleSelectChat(chat)} className={`p-3 flex items-center cursor-pointer border-l-4 transition-colors duration-200 ${selectedChatId === chat.id ? 'border-pink-500 bg-slate-100 dark:bg-slate-700/50' : 'border-transparent hover:bg-slate-50 dark:hover:bg-slate-700/30'}`}>
-                            {showAvatars && <UserAvatar name={chat.title} className="w-11 h-11 text-lg" />}
+                            {showAvatars && (
+                                <UserAvatar 
+                                    name={chat.title} 
+                                    className="w-11 h-11 text-lg" 
+                                    imageUrl={customAvatars[chat.title]}
+                                    onClick={(e) => { e.stopPropagation(); handleAvatarChangeClick(chat.title); }}
+                                />
+                            )}
                             <div className="ml-4 truncate flex-grow">
                                 <p className="font-semibold text-slate-900 dark:text-slate-100">{chat.title}</p>
                                 <p className="text-sm text-slate-500 dark:text-slate-400 truncate">
@@ -676,7 +852,14 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
                         <header className="p-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between shadow-sm gap-4 bg-white dark:bg-slate-800">
                            <div className="flex items-center min-w-0">
                                 <button onClick={() => setIsSidebarVisible(true)} className="md:hidden p-2 mr-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700"><ArrowLeftIcon className="w-5 h-5 text-slate-600 dark:text-slate-300" /></button>
-                                 {showAvatars && <UserAvatar name={selectedChat.title} className="w-11 h-11 text-lg flex-shrink-0" />}
+                                 {showAvatars && (
+                                    <UserAvatar 
+                                        name={selectedChat.title} 
+                                        className="w-11 h-11 text-lg" 
+                                        imageUrl={customAvatars[selectedChat.title]}
+                                        onClick={(e) => { e.stopPropagation(); handleAvatarChangeClick(selectedChat.title); }}
+                                    />
+                                 )}
                                 <div className="ml-4 truncate">
                                    <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200 truncate">{selectedChat.title}</h3>
                                    <p className="text-sm text-slate-500 dark:text-slate-400 truncate">{selectedChat.participants.map(p => p.name).join(', ')}</p>
@@ -732,7 +915,11 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
                             ) : (
                                 <>
                                     <div className={`w-full h-full transition-opacity duration-300 ${activeTab === 'messages' ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-                                         <div ref={scrollContainerRef} className="h-full p-6 overflow-y-auto bg-slate-50 dark:bg-slate-900 bg-[url('data:image/svg+xml,%3Csvg%20width%3D%224%22%20height%3D%224%22%20viewBox%3D%220%200%204%204%22%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%3E%3Cpath%20d%3D%22M1%203h1v1H1V3zm2-2h1v1H3V1z%22%20fill%3D%22%2394a3b8%22%20fill-opacity%3D%220.1%22%20fill-rule%3D%22evenodd%22%3E%3C/path%3E%3C/svg%3E')]">
+                                         <div 
+                                            ref={scrollContainerRef} 
+                                            className={`h-full p-6 overflow-y-auto ${messageContainerClasses}`}
+                                            style={messageContainerStyle}
+                                         >
                                             <div className="flex flex-col gap-4">
                                                 {hasMoreMessages && !isSearching && (
                                                     <div ref={topSentinelRef} className="flex justify-center p-4">
@@ -755,7 +942,8 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
 
                                                     const showDateSeparator = !prevMessage || new Date(firstMessage.timestamp_ms).toDateString() !== new Date(prevMessage.timestamp_ms).toDateString();
                                                     const dateStr = formatDateSeparator(firstMessage.timestamp_ms);
-                                                    const isOwnMessage = firstMessage.sender_name === ownerName;
+                                                    
+                                                    const isOwnMessage = firstMessage.sender_name === rightAlignedUser;
 
                                                     return (
                                                         <React.Fragment key={`${firstMessage.timestamp_ms}-${groupIndex}`}>
@@ -771,6 +959,9 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
                                                                 searchQuery={isSearching ? searchQuery : undefined}
                                                                 isSearching={isSearching}
                                                                 onJumpFromSearch={handleJumpFromSearch}
+                                                                customAvatarUrl={customAvatars[firstMessage.sender_name]}
+                                                                onAvatarClick={() => handleAvatarChangeClick(firstMessage.sender_name)}
+                                                                theme={selectedChatTheme}
                                                             />
                                                         </React.Fragment>
                                                     );

@@ -138,18 +138,46 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
 
             // --- Scan for conversations (fast) ---
             setProcessingStep('Scanning conversations...');
-            const chatFiles = zip.file(/messages\/inbox\/.*\/message_1\.json/);
-            const chatPromises = chatFiles.map(async (chatFile): Promise<Chat | null> => {
+            const chatFolders = new Set<string>();
+            
+            // Search for message_1.json files across the entire archive to reliably find chat folders
+            const chatManifestFiles = zip.file(/message_1\.json$/);
+
+            chatManifestFiles.forEach(file => {
+                // We only care about chats that are inside a 'messages' directory, anywhere in the archive.
+                if (file.name.includes('messages/')) {
+                    const pathParts = file.name.split('/');
+                    pathParts.pop(); // Remove 'message_1.json'
+                    const folderPath = pathParts.join('/');
+                    if (folderPath) {
+                        chatFolders.add(folderPath);
+                    }
+                }
+            });
+
+            const chatPromises = Array.from(chatFolders).map(async (folderPath): Promise<Chat | null> => {
                 try {
-                    const content = await chatFile.async('string');
+                    const firstMessageFile = zip.file(`${folderPath}/message_1.json`);
+                    if (!firstMessageFile) return null;
+
+                    const content = await firstMessageFile.async('string');
                     const chatData = JSON.parse(content);
+
+                    // Find the last message across all message files to get the true last activity
+                    const messageFiles = zip.file(new RegExp(`^${folderPath}/message_\\d+\\.json$`));
+                    let lastTimestamp = 0;
+                    if(chatData.messages && chatData.messages.length > 0) {
+                        lastTimestamp = chatData.messages.reduce((latest: number, msg: any) => Math.max(latest, msg.timestamp_ms), 0);
+                    }
+
+
                      return {
-                        id: chatFile.name,
-                        path: chatFile.name,
+                        id: folderPath,
+                        path: folderPath, // Path is the folder now
                         title: fixEncoding(chatData.title),
                         participants: chatData.participants.map((p: any) => ({ name: fixEncoding(p.name) })),
                         messages: [], // Initially empty
-                        lastActivity: chatData.messages[chatData.messages.length - 1]?.timestamp_ms || 0
+                        lastActivity: lastTimestamp,
                     };
                 } catch {
                     return null; // Ignore corrupted chat JSON
@@ -179,14 +207,22 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
     const loadChatMessages = useCallback(async (chatPath: string): Promise<Message[]> => {
         if (!zipRef.current) return [];
         
-        const chatFile = zipRef.current.file(chatPath);
-        if (!chatFile) return [];
+        // Find all message files in the chat directory
+        const messageFiles = zipRef.current.file(new RegExp(`^${chatPath}/message_\\d+\\.json$`));
+        if (!messageFiles || messageFiles.length === 0) return [];
 
         try {
-            const content = await chatFile.async('string');
-            const chatData = JSON.parse(content);
-            if (!chatData.messages) return [];
+            let allMessagesRaw: any[] = [];
             
+            // Load messages from all files
+            for (const file of messageFiles) {
+                const content = await file.async('string');
+                const chatData = JSON.parse(content);
+                if (chatData.messages) {
+                    allMessagesRaw.push(...chatData.messages);
+                }
+            }
+
             const createBlobUrl = async (uri: string) => {
                 if(!zipRef.current) return undefined;
                 const mediaFile = zipRef.current.file(uri);
@@ -197,7 +233,7 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
                 return undefined;
             };
 
-            const messagePromises = chatData.messages.map(async (msg: any, index: number): Promise<Message> => {
+            const messagePromises = allMessagesRaw.map(async (msg: any, index: number): Promise<Message> => {
                 const processedMsg: Message = {
                     id: `${msg.timestamp_ms}-${index}`,
                     ...msg,
@@ -217,7 +253,8 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
                 }
                 return processedMsg;
             });
-
+            
+            // Sort all messages chronologically after processing
             return (await Promise.all(messagePromises)).sort((a, b) => a.timestamp_ms - b.timestamp_ms);
 
         } catch (error) {
