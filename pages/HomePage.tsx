@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { PLATFORMS } from '../constants';
 import PlatformCard from '../components/PlatformCard';
@@ -33,7 +32,7 @@ const HomePage: React.FC = () => {
       <main className="flex-grow flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8">
         <header className="text-center mb-8 md:mb-12">
           <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold text-slate-900 dark:text-white tracking-tight">
-            Project Keicei
+            Project Keicei v1
           </h1>
           <p className="mt-3 text-lg sm:text-xl text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
             Your exported data, beautifully reimagined.
