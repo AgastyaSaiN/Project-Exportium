@@ -1,5 +1,4 @@
-
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import JSZip from 'jszip';
 import { Platform } from '../../constants';
@@ -56,8 +55,19 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
     const [errorMessage, setErrorMessage] = useState<string>('');
     const [chats, setChats] = useState<Chat[]>([]);
     const [ownerName, setOwnerName] = useState<string>('');
+    const [theme, setTheme] = useState<'light' | 'dark'>('light');
     const zipRef = useRef<JSZip | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        const root = window.document.documentElement;
+        root.classList.remove(theme === 'light' ? 'dark' : 'light');
+        root.classList.add(theme);
+    }, [theme]);
+
+    const handleThemeToggle = () => {
+        setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
+    };
 
     const handleSelectArchiveClick = () => {
         fileInputRef.current?.click();
@@ -187,8 +197,9 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
                 return undefined;
             };
 
-            const messagePromises = chatData.messages.map(async (msg: any): Promise<Message> => {
+            const messagePromises = chatData.messages.map(async (msg: any, index: number): Promise<Message> => {
                 const processedMsg: Message = {
+                    id: `${msg.timestamp_ms}-${index}`,
                     ...msg,
                     content: msg.content ? fixEncoding(msg.content) : undefined,
                     sender_name: fixEncoding(msg.sender_name),
@@ -229,8 +240,8 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
                 return (
                     <div className="text-center">
                         <SpinnerIcon className="w-20 h-20 mx-auto text-slate-400 animate-spin mb-6" />
-                        <h2 className="text-3xl font-bold text-slate-800">Processing Archive...</h2>
-                        <p className="mt-2 text-lg text-slate-500 max-w-md mx-auto">
+                        <h2 className="text-3xl font-bold text-slate-800 dark:text-slate-200">Processing Archive...</h2>
+                        <p className="mt-2 text-lg text-slate-500 dark:text-slate-400 max-w-md mx-auto">
                            {processingStep}
                         </p>
                     </div>
@@ -239,8 +250,8 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
                  return (
                     <div className="text-center">
                         <ExclamationTriangleIcon className="w-24 h-24 mx-auto text-red-500 mb-4" />
-                        <h2 className="text-4xl font-bold text-slate-900">Processing Failed</h2>
-                        <p className="mt-3 text-md text-red-600 bg-red-100 p-3 rounded-md">
+                        <h2 className="text-4xl font-bold text-slate-900 dark:text-slate-100">Processing Failed</h2>
+                        <p className="mt-3 text-md text-red-600 bg-red-100 dark:bg-red-900/30 dark:text-red-300 p-3 rounded-md">
                             {errorMessage}
                         </p>
                          <div className="mt-10">
@@ -258,10 +269,10 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
                 return (
                     <div className="text-center w-full">
                          <Icon className={`w-24 h-24 mx-auto mb-6 ${color}`} />
-                        <h1 className="text-5xl font-bold text-slate-900">
+                        <h1 className="text-5xl font-bold text-slate-900 dark:text-slate-100">
                             {name} Archive
                         </h1>
-                        <p className="mt-4 text-xl text-slate-500">
+                        <p className="mt-4 text-xl text-slate-500 dark:text-slate-400">
                             To get started, select your Instagram data archive file.
                         </p>
                         <div className="mt-12 flex flex-col items-center">
@@ -280,11 +291,11 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
 
     if (chats.length > 0) {
         return (
-             <div className="w-screen h-screen bg-slate-100 flex flex-col">
-                <header className="flex-shrink-0 bg-white p-3 border-b border-slate-200 flex justify-between items-center shadow-sm z-20">
+             <div className="w-screen h-screen bg-slate-100 dark:bg-slate-900 flex flex-col">
+                <header className="flex-shrink-0 bg-white dark:bg-slate-800 p-3 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center shadow-sm z-20">
                     <div className="flex items-center">
                         <Icon className={`w-8 h-8 ${color}`} />
-                        <h1 className="text-xl font-bold ml-3 text-slate-800">Instagram Chat Viewer</h1>
+                        <h1 className="text-xl font-bold ml-3 text-slate-800 dark:text-slate-200">Instagram Chat Viewer</h1>
                     </div>
                     <button
                         onClick={handleReset}
@@ -298,6 +309,8 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
                         chats={chats} 
                         ownerName={ownerName} 
                         onLoadMessages={loadChatMessages} 
+                        theme={theme}
+                        onThemeToggle={handleThemeToggle}
                     />
                 </main>
             </div>
@@ -305,7 +318,7 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
     }
 
     return (
-        <div className="flex flex-col min-h-screen bg-slate-50 p-4">
+        <div className="flex flex-col min-h-screen bg-slate-50 dark:bg-slate-900 p-4">
              <input
                 type="file"
                 ref={fileInputRef}
@@ -322,7 +335,7 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
                  <div className="flex-shrink-0 py-6 text-center">
                     <Link
                         to="/"
-                        className="inline-flex items-center px-4 py-2 text-slate-600 font-semibold rounded-lg hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-400 transition-all duration-300"
+                        className="inline-flex items-center px-4 py-2 text-slate-600 dark:text-slate-400 font-semibold rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-400 transition-all duration-300"
                     >
                         <ArrowLeftIcon className="w-5 h-5 mr-2" />
                         Back to Home

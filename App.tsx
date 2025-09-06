@@ -7,7 +7,7 @@ import AppPage from './pages/AppPage';
 const App: React.FC = () => {
   return (
     <HashRouter>
-      <div className="bg-white text-slate-800 font-sans">
+      <div className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans">
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/app/:appName" element={<AppPage />} />

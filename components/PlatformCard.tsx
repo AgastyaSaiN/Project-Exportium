@@ -24,12 +24,12 @@ const PlatformCard: React.FC<PlatformCardProps> = ({ name, slug, icon: Icon, col
   return (
     <Link
       to={`/app/${slug}`}
-      className={`group flex flex-col items-center justify-center p-3.5 bg-white/60 backdrop-blur-sm rounded-2xl border border-slate-200/80 shadow-md hover:shadow-xl hover:-translate-y-1 transition-all duration-300 ease-in-out cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 hover:shadow-[-5px_10px_30px_0px] hover:${hoverShadow}`}
+      className={`group flex flex-col items-center justify-center p-3.5 bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm rounded-2xl border border-slate-200/80 dark:border-slate-700/80 shadow-md hover:shadow-xl hover:-translate-y-1 transition-all duration-300 ease-in-out cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 hover:shadow-[-5px_10px_30px_0px] hover:${hoverShadow}`}
     >
-      <div className={`relative w-12 h-12 flex items-center justify-center rounded-full bg-slate-100`}>
+      <div className={`relative w-12 h-12 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700`}>
           <Icon className={`w-8 h-8 ${color} transition-colors duration-300`} />
       </div>
-      <span className="mt-2 text-sm font-medium text-slate-800 text-center">{name}</span>
+      <span className="mt-2 text-sm font-medium text-slate-800 dark:text-slate-200 text-center">{name}</span>
     </Link>
   );
 };

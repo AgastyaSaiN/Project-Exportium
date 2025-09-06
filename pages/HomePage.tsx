@@ -28,14 +28,14 @@ const HomePage: React.FC = () => {
   }, []);
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-50 overflow-hidden relative">
-       <div className="absolute inset-0 -z-10 h-full w-full bg-white bg-[linear-gradient(to_right,#f0f0f0_1px,transparent_1px),linear-gradient(to_bottom,#f0f0f0_1px,transparent_1px)] bg-[size:6rem_4rem]"><div className="absolute bottom-0 left-0 right-0 top-0 bg-[radial-gradient(circle_800px_at_100%_200px,#d5c5ff,transparent)]"></div></div>
+    <div className="flex flex-col min-h-screen bg-slate-50 dark:bg-slate-900 overflow-hidden relative">
+       <div className="absolute inset-0 -z-10 h-full w-full bg-white dark:bg-slate-900 bg-[linear-gradient(to_right,#f0f0f0_1px,transparent_1px),linear-gradient(to_bottom,#f0f0f0_1px,transparent_1px)] dark:bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:6rem_4rem]"><div className="absolute bottom-0 left-0 right-0 top-0 bg-[radial-gradient(circle_800px_at_100%_200px,#d5c5ff,transparent)] dark:bg-[radial-gradient(circle_800px_at_100%_200px,#3f3c5f,transparent)]"></div></div>
       <main className="flex-grow flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8">
         <header className="text-center mb-8 md:mb-12">
-          <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold text-slate-900 tracking-tight">
+          <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold text-slate-900 dark:text-white tracking-tight">
             Project Keicei
           </h1>
-          <p className="mt-3 text-lg sm:text-xl text-slate-600 max-w-2xl mx-auto">
+          <p className="mt-3 text-lg sm:text-xl text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
             Your exported data, beautifully reimagined.
           </p>
         </header>
@@ -75,7 +75,7 @@ const HomePage: React.FC = () => {
       </main>
 
       <footer className="w-full py-6 text-center mt-auto">
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-slate-500 dark:text-slate-400">
           Privacy First. All data stays on your device.
         </p>
       </footer>

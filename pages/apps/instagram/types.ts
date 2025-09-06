@@ -11,6 +11,7 @@ export interface Video {
 }
 
 export interface Message {
+  id: string;
   sender_name: string;
   timestamp_ms: number;
   content?: string;
