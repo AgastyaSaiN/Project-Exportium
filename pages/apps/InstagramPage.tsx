@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import JSZip from 'jszip';
@@ -63,15 +64,13 @@ const fixEncoding = (text: string): string => {
 
 const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
     const { name, icon: Icon, color } = platform;
-    const [status, setStatus] = useState<'idle' | 'processing' | 'error'>('idle');
+    const [status, setStatus] = useState<'idle' | 'uploading' | 'processing' | 'error' | 'success'>('idle');
     const [processingStep, setProcessingStep] = useState('');
     const [errorMessage, setErrorMessage] = useState<string>('');
     const [chats, setChats] = useState<Chat[]>([]);
     const [ownerName, setOwnerName] = useState<string>('');
     const [theme, setTheme] = useState<'light' | 'dark'>('light');
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
-    const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'completed' | 'error'>('idle');
-    const [uploadError, setUploadError] = useState('');
 
     const zipRef = useRef<JSZip | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -94,23 +93,42 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
         const file = event.target.files?.[0];
         if (!file) return;
         setSelectedFile(file);
-        // Reset statuses if a new file is chosen
         setStatus('idle');
-        setUploadStatus('idle');
         setErrorMessage('');
-        setUploadError('');
     };
     
-    const handleProcessLocally = async () => {
+    const handleProcessArchive = async () => {
         if (!selectedFile) return;
 
-        setStatus('processing');
+        // Reset state
         setErrorMessage('');
         setChats([]);
         setOwnerName('');
         zipRef.current = null;
 
         try {
+            // Step 1: Upload the file securely to Vercel Blob
+            setStatus('uploading');
+            setProcessingStep('Uploading file securely...');
+            
+            const uploadResponse = await fetch(
+              `/api/upload?filename=${encodeURIComponent(selectedFile.name)}`,
+              {
+                method: 'POST',
+                body: selectedFile,
+              },
+            );
+
+            if (!uploadResponse.ok) {
+                const errorData = await uploadResponse.json();
+                throw new Error(errorData.error || 'File upload failed. Please try again.');
+            }
+            
+            const newBlob = await uploadResponse.json();
+            console.log('Upload successful:', newBlob);
+
+            // Step 2: Process the file locally with JSZip
+            setStatus('processing');
             setProcessingStep('Loading ZIP file...');
             const zip = await JSZip.loadAsync(selectedFile);
             zipRef.current = zip;
@@ -216,7 +234,7 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
             }
             
             setChats(scannedChats);
-            setStatus('idle');
+            setStatus('success');
         
         } catch (error) {
             console.error("Failed to process archive:", error);
@@ -224,41 +242,6 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
             setErrorMessage(error instanceof Error ? error.message : "An unknown error occurred during processing.");
         }
     };
-
-    const handleSecureUpload = async () => {
-        if (!selectedFile) return;
-
-        setUploadStatus('uploading');
-        setUploadError('');
-
-        try {
-            // This performs a server-side upload. The file is sent to our own API route,
-            // which then streams it to Vercel Blob.
-            // Note: This approach is limited by serverless function payload size limits (e.g., 4.5MB).
-            const response = await fetch(
-              `/api/upload?filename=${encodeURIComponent(selectedFile.name)}`,
-              {
-                method: 'POST',
-                body: selectedFile,
-              },
-            );
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'File upload failed.');
-            }
-            
-            const newBlob = await response.json();
-            console.log('Upload successful:', newBlob);
-
-            setUploadStatus('completed');
-
-        } catch (err) {
-            console.error('Upload failed:', err);
-            setUploadStatus('error');
-            setUploadError(err instanceof Error ? err.message : 'An unknown error occurred during upload.');
-        }
-    }
     
     const loadChatMessages = useCallback(async (chatPath: string): Promise<Message[]> => {
         if (!zipRef.current) return [];
@@ -323,17 +306,15 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
         setOwnerName('');
         zipRef.current = null;
         setSelectedFile(null);
-        setUploadStatus('idle');
-        setUploadError('');
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
     const renderUploadView = () => {
-        if (status === 'processing') {
+        if (status === 'uploading' || status === 'processing') {
             return (
                 <div className="text-center">
                     <SpinnerIcon className="w-20 h-20 mx-auto text-slate-400 animate-spin mb-6" />
-                    <h2 className="text-3xl font-bold text-slate-800 dark:text-slate-200">Processing Archive...</h2>
+                    <h2 className="text-3xl font-bold text-slate-800 dark:text-slate-200">Working on it...</h2>
                     <p className="mt-2 text-lg text-slate-500 dark:text-slate-400 max-w-md mx-auto">
                        {processingStep}
                     </p>
@@ -345,7 +326,7 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
              return (
                 <div className="text-center">
                     <ExclamationTriangleIcon className="w-24 h-24 mx-auto text-red-500 mb-4" />
-                    <h2 className="text-4xl font-bold text-slate-900 dark:text-slate-100">Processing Failed</h2>
+                    <h2 className="text-4xl font-bold text-slate-900 dark:text-slate-100">An Error Occurred</h2>
                     <p className="mt-3 text-md text-red-600 bg-red-100 dark:bg-red-900/30 dark:text-red-300 p-3 rounded-md">
                         {errorMessage}
                     </p>
@@ -369,44 +350,14 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
                     <p className="mt-2 text-slate-500 dark:text-slate-400 break-all" title={selectedFile.name}>
                         {selectedFile.name}
                     </p>
-                    <div className="mt-8 space-y-4">
-                        <button
-                            onClick={handleProcessLocally}
-                            disabled={uploadStatus !== 'idle'}
-                            className="w-full inline-flex items-center justify-center px-6 py-3 bg-slate-700 text-white font-bold rounded-lg shadow-md hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-slate-800 focus:ring-slate-500 transition-all duration-300 disabled:opacity-50"
+                    <div className="mt-8">
+                         <button
+                            onClick={handleProcessArchive}
+                            className="w-full inline-flex items-center justify-center px-6 py-3 bg-pink-500 text-white font-bold rounded-lg shadow-lg hover:bg-pink-600 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-slate-800 focus:ring-pink-500 transition-all duration-300"
                         >
-                            Process Locally in Browser
+                            <CloudUploadIcon className="w-6 h-6 mr-3" />
+                            Process Archive
                         </button>
-                        <div className="my-4 border-t border-slate-200 dark:border-slate-600"></div>
-                        {uploadStatus === 'idle' && (
-                            <button
-                                onClick={handleSecureUpload}
-                                className="w-full inline-flex items-center justify-center px-6 py-3 bg-pink-500 text-white font-bold rounded-lg shadow-lg hover:bg-pink-600 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-slate-800 focus:ring-pink-500 transition-all duration-300"
-                            >
-                                <CloudUploadIcon className="w-6 h-6 mr-3" />
-                                Securely Upload for Admin
-                            </button>
-                        )}
-                        {uploadStatus === 'uploading' && (
-                             <div className="text-center p-4 rounded-lg bg-slate-100 dark:bg-slate-700">
-                                <SpinnerIcon className="w-8 h-8 mx-auto text-slate-400 animate-spin" />
-                                <p className="mt-2 font-semibold text-slate-600 dark:text-slate-300">Uploading file securely...</p>
-                            </div>
-                        )}
-                        {uploadStatus === 'completed' && (
-                            <div className="text-center p-4 rounded-lg bg-green-100 dark:bg-green-900/30">
-                                <CheckCircleIcon className="w-10 h-10 mx-auto text-green-500" />
-                                <p className="mt-2 font-bold text-green-700 dark:text-green-300">Upload Complete!</p>
-                            </div>
-                        )}
-                        {uploadStatus === 'error' && (
-                            <div className="text-center p-4 rounded-lg bg-red-100 dark:bg-red-900/30">
-                                <ExclamationTriangleIcon className="w-10 h-10 mx-auto text-red-500" />
-                                <p className="mt-2 font-bold text-red-700 dark:text-red-400">Upload Failed</p>
-                                <p className="text-sm text-red-600 dark:text-red-400">{uploadError}</p>
-                                <button onClick={handleSecureUpload} className="mt-3 px-4 py-1 text-sm bg-pink-500 text-white rounded-md hover:bg-pink-600">Retry Upload</button>
-                            </div>
-                        )}
                     </div>
                 </div>
             );
@@ -476,7 +427,7 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
                     {renderUploadView()}
                 </div>
             </div>
-            {status !== 'processing' && (
+            {status !== 'processing' && status !== 'uploading' && (
                  <div className="flex-shrink-0 py-6 text-center">
                     <Link
                         to="/"
