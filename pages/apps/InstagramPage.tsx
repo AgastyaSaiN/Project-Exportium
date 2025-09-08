@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import JSZip from 'jszip';
@@ -21,12 +20,6 @@ const UploadIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
     </svg>
 );
 
-const CloudUploadIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l-3 3m3-3l3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
-    </svg>
-);
-
 const SpinnerIcon: React.FC<{className?: string}> = ({className}) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" className={className}>
         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -39,13 +32,6 @@ const ExclamationTriangleIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props)
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
     </svg>
 );
-
-const CheckCircleIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-    </svg>
-);
-
 
 // --- Component ---
 
@@ -64,14 +50,12 @@ const fixEncoding = (text: string): string => {
 
 const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
     const { name, icon: Icon, color } = platform;
-    const [status, setStatus] = useState<'idle' | 'uploading' | 'processing' | 'error' | 'success'>('idle');
+    const [status, setStatus] = useState<'idle' | 'processing' | 'error'>('idle');
     const [processingStep, setProcessingStep] = useState('');
     const [errorMessage, setErrorMessage] = useState<string>('');
     const [chats, setChats] = useState<Chat[]>([]);
     const [ownerName, setOwnerName] = useState<string>('');
     const [theme, setTheme] = useState<'light' | 'dark'>('light');
-    const [selectedFile, setSelectedFile] = useState<File | null>(null);
-
     const zipRef = useRef<JSZip | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -89,53 +73,19 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
         fileInputRef.current?.click();
     };
     
-    const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
-        setSelectedFile(file);
-        setStatus('idle');
-        setErrorMessage('');
-    };
-    
-    const handleProcessArchive = async () => {
-        if (!selectedFile) return;
 
+        setStatus('processing');
         setErrorMessage('');
         setChats([]);
         setOwnerName('');
         zipRef.current = null;
 
         try {
-            // Step 1: Request a secure upload URL from our serverless function.
-            setStatus('uploading');
-            setProcessingStep('Preparing secure upload...');
-            
-            const response = await fetch('/api/upload', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ filename: selectedFile.name }),
-            });
-
-            if (!response.ok) {
-                throw new Error('Failed to prepare the upload. Please try again.');
-            }
-            const { url: uploadUrl } = await response.json();
-
-            // Step 2: Upload the file directly to Vercel's Blob storage.
-            setProcessingStep('Uploading file securely...');
-            const uploadResponse = await fetch(uploadUrl, {
-                method: 'PUT',
-                body: selectedFile,
-            });
-            
-            if (!uploadResponse.ok) {
-                throw new Error('File upload failed. Please try again.');
-            }
-            
-            // Step 3: Process the file locally with JSZip
-            setStatus('processing');
             setProcessingStep('Loading ZIP file...');
-            const zip = await JSZip.loadAsync(selectedFile);
+            const zip = await JSZip.loadAsync(file);
             zipRef.current = zip;
 
             // --- Determine Owner Username ---
@@ -143,7 +93,7 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
             let determinedOwnerName: string | null = null;
             
             const filenameRegex = /^instagram-(.+?)-\d{4}-\d{2}-\d{2}-/;
-            const match = selectedFile.name.match(filenameRegex);
+            const match = file.name.match(filenameRegex);
             if (match && match[1]) {
                 determinedOwnerName = fixEncoding(match[1]);
             }
@@ -190,12 +140,14 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
             setProcessingStep('Scanning conversations...');
             const chatFolders = new Set<string>();
             
+            // Search for message_1.json files across the entire archive to reliably find chat folders
             const chatManifestFiles = zip.file(/message_1\.json$/);
 
             chatManifestFiles.forEach(file => {
+                // We only care about chats that are inside a 'messages' directory, anywhere in the archive.
                 if (file.name.includes('messages/')) {
                     const pathParts = file.name.split('/');
-                    pathParts.pop();
+                    pathParts.pop(); // Remove 'message_1.json'
                     const folderPath = pathParts.join('/');
                     if (folderPath) {
                         chatFolders.add(folderPath);
@@ -211,22 +163,24 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
                     const content = await firstMessageFile.async('string');
                     const chatData = JSON.parse(content);
 
+                    // Find the last message across all message files to get the true last activity
                     const messageFiles = zip.file(new RegExp(`^${folderPath}/message_\\d+\\.json$`));
                     let lastTimestamp = 0;
                     if(chatData.messages && chatData.messages.length > 0) {
                         lastTimestamp = chatData.messages.reduce((latest: number, msg: any) => Math.max(latest, msg.timestamp_ms), 0);
                     }
 
+
                      return {
                         id: folderPath,
-                        path: folderPath,
+                        path: folderPath, // Path is the folder now
                         title: fixEncoding(chatData.title),
                         participants: chatData.participants.map((p: any) => ({ name: fixEncoding(p.name) })),
                         messages: [], // Initially empty
                         lastActivity: lastTimestamp,
                     };
                 } catch {
-                    return null;
+                    return null; // Ignore corrupted chat JSON
                 }
             });
 
@@ -239,24 +193,28 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
             }
             
             setChats(scannedChats);
-            setStatus('success');
+            setStatus('idle');
         
         } catch (error) {
             console.error("Failed to process archive:", error);
             setStatus('error');
             setErrorMessage(error instanceof Error ? error.message : "An unknown error occurred during processing.");
+        } finally {
+             if(event.target) event.target.value = '';
         }
     };
     
     const loadChatMessages = useCallback(async (chatPath: string): Promise<Message[]> => {
         if (!zipRef.current) return [];
         
+        // Find all message files in the chat directory
         const messageFiles = zipRef.current.file(new RegExp(`^${chatPath}/message_\\d+\\.json$`));
         if (!messageFiles || messageFiles.length === 0) return [];
 
         try {
             let allMessagesRaw: any[] = [];
             
+            // Load messages from all files
             for (const file of messageFiles) {
                 const content = await file.async('string');
                 const chatData = JSON.parse(content);
@@ -296,6 +254,7 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
                 return processedMsg;
             });
             
+            // Sort all messages chronologically after processing
             return (await Promise.all(messagePromises)).sort((a, b) => a.timestamp_ms - b.timestamp_ms);
 
         } catch (error) {
@@ -310,84 +269,61 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
         setChats([]);
         setOwnerName('');
         zipRef.current = null;
-        setSelectedFile(null);
-        if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
     const renderUploadView = () => {
-        if (status === 'uploading' || status === 'processing') {
-            return (
-                <div className="text-center">
-                    <SpinnerIcon className="w-20 h-20 mx-auto text-slate-400 animate-spin mb-6" />
-                    <h2 className="text-3xl font-bold text-slate-800 dark:text-slate-200">Working on it...</h2>
-                    <p className="mt-2 text-lg text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-                       {processingStep}
-                    </p>
-                </div>
-            );
-        }
-        
-        if (status === 'error') {
-             return (
-                <div className="text-center">
-                    <ExclamationTriangleIcon className="w-24 h-24 mx-auto text-red-500 mb-4" />
-                    <h2 className="text-4xl font-bold text-slate-900 dark:text-slate-100">An Error Occurred</h2>
-                    <p className="mt-3 text-md text-red-600 bg-red-100 dark:bg-red-900/30 dark:text-red-300 p-3 rounded-md">
-                        {errorMessage}
-                    </p>
-                     <div className="mt-10">
-                        <button
-                            onClick={handleSelectArchiveClick}
-                            className="inline-flex items-center justify-center w-full sm:w-auto px-8 py-4 bg-pink-500 text-white font-bold rounded-lg shadow-lg hover:bg-pink-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-pink-500 transition-all duration-300 transform hover:scale-105"
-                        >
-                            Try Another File
-                        </button>
+        switch (status) {
+            case 'processing':
+                return (
+                    <div className="text-center">
+                        <SpinnerIcon className="w-20 h-20 mx-auto text-slate-400 animate-spin mb-6" />
+                        <h2 className="text-3xl font-bold text-slate-800 dark:text-slate-200">Processing Archive...</h2>
+                        <p className="mt-2 text-lg text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                           {processingStep}
+                        </p>
                     </div>
-                </div>
-            );
-        }
-        
-        if (selectedFile) {
-            return (
-                 <div className="text-center w-full bg-white dark:bg-slate-800 p-8 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700">
-                    <Icon className={`w-16 h-16 mx-auto mb-4 ${color}`} />
-                    <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">File Selected</h2>
-                    <p className="mt-2 text-slate-500 dark:text-slate-400 break-all" title={selectedFile.name}>
-                        {selectedFile.name}
-                    </p>
-                    <div className="mt-8">
-                         <button
-                            onClick={handleProcessArchive}
-                            className="w-full inline-flex items-center justify-center px-6 py-3 bg-pink-500 text-white font-bold rounded-lg shadow-lg hover:bg-pink-600 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-slate-800 focus:ring-pink-500 transition-all duration-300"
-                        >
-                            <CloudUploadIcon className="w-6 h-6 mr-3" />
-                            Process Archive
-                        </button>
+                );
+            case 'error':
+                 return (
+                    <div className="text-center">
+                        <ExclamationTriangleIcon className="w-24 h-24 mx-auto text-red-500 mb-4" />
+                        <h2 className="text-4xl font-bold text-slate-900 dark:text-slate-100">Processing Failed</h2>
+                        <p className="mt-3 text-md text-red-600 bg-red-100 dark:bg-red-900/30 dark:text-red-300 p-3 rounded-md">
+                            {errorMessage}
+                        </p>
+                         <div className="mt-10">
+                            <button
+                                onClick={handleSelectArchiveClick}
+                                className="inline-flex items-center justify-center w-full sm:w-auto px-8 py-4 bg-pink-500 text-white font-bold rounded-lg shadow-lg hover:bg-pink-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-pink-500 transition-all duration-300 transform hover:scale-105"
+                            >
+                                Try Another File
+                            </button>
+                        </div>
                     </div>
-                </div>
-            );
+                );
+            case 'idle':
+            default:
+                return (
+                    <div className="text-center w-full">
+                         <Icon className={`w-24 h-24 mx-auto mb-6 ${color}`} />
+                        <h1 className="text-5xl font-bold text-slate-900 dark:text-slate-100">
+                            {name} Archive
+                        </h1>
+                        <p className="mt-4 text-xl text-slate-500 dark:text-slate-400">
+                            To get started, select your Instagram data archive file.
+                        </p>
+                        <div className="mt-12 flex flex-col items-center">
+                            <button
+                                onClick={handleSelectArchiveClick}
+                                className="inline-flex items-center justify-center w-full sm:w-auto px-8 py-4 bg-pink-500 text-white font-bold rounded-lg shadow-lg hover:bg-pink-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-pink-500 transition-all duration-300 transform hover:scale-105"
+                            >
+                                <UploadIcon className="w-6 h-6 mr-3" />
+                                Select Archive (.zip)
+                            </button>
+                        </div>
+                    </div>
+                );
         }
-
-        return (
-            <div className="text-center w-full">
-                 <Icon className={`w-24 h-24 mx-auto mb-6 ${color}`} />
-                <h1 className="text-5xl font-bold text-slate-900 dark:text-slate-100">
-                    {name} Archive
-                </h1>
-                <p className="mt-4 text-xl text-slate-500 dark:text-slate-400">
-                    To get started, select your Instagram data archive file.
-                </p>
-                <div className="mt-12 flex flex-col items-center">
-                    <button
-                        onClick={handleSelectArchiveClick}
-                        className="inline-flex items-center justify-center w-full sm:w-auto px-8 py-4 bg-pink-500 text-white font-bold rounded-lg shadow-lg hover:bg-pink-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-pink-500 transition-all duration-300 transform hover:scale-105"
-                    >
-                        <UploadIcon className="w-6 h-6 mr-3" />
-                        Select Archive (.zip)
-                    </button>
-                </div>
-            </div>
-        );
     };
 
     if (chats.length > 0) {
@@ -432,7 +368,7 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
                     {renderUploadView()}
                 </div>
             </div>
-            {status !== 'processing' && status !== 'uploading' && (
+            {status !== 'processing' && (
                  <div className="flex-shrink-0 py-6 text-center">
                     <Link
                         to="/"
