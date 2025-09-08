@@ -175,7 +175,72 @@ const UserAvatar: React.FC<{ name: string; className?: string; imageUrl?: string
     );
 });
 
-const PhotoGrid: React.FC<{ photos: Photo[] }> = ({ photos }) => {
+const useIntersectionObserver = (options: IntersectionObserverInit) => {
+    const [entry, setEntry] = useState<IntersectionObserverEntry | null>(null);
+    const observer = useRef<IntersectionObserver | null>(null);
+    const ref = useRef(null);
+
+    useEffect(() => {
+        const node = ref.current;
+        if (!node) return;
+
+        observer.current = new IntersectionObserver(([entry]) => {
+            if (entry.isIntersecting) {
+                setEntry(entry);
+                if (observer.current) {
+                    observer.current.unobserve(node);
+                }
+            }
+        }, options);
+
+        observer.current.observe(node);
+
+        return () => {
+            if (observer.current) {
+                observer.current.disconnect();
+            }
+        };
+    }, [options]);
+
+    return [ref, entry] as const;
+};
+
+const LazyMedia: React.FC<{ uri: string, createBlobUrl: (uri: string) => Promise<string | undefined>, isVideo: boolean, className?: string }> = ({ uri, createBlobUrl, isVideo, className }) => {
+    const [blobUrl, setBlobUrl] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
+    const [ref, entry] = useIntersectionObserver({ threshold: 0.1, rootMargin: '200px' });
+
+    useEffect(() => {
+        if (entry?.isIntersecting && !blobUrl && !isLoading) {
+            setIsLoading(true);
+            createBlobUrl(uri).then(url => {
+                if (url) {
+                    setBlobUrl(url);
+                }
+            }).finally(() => {
+                setIsLoading(false);
+            });
+        }
+    }, [entry, uri, createBlobUrl, blobUrl, isLoading]);
+
+    if (blobUrl) {
+        if (isVideo) {
+            return <video src={blobUrl} controls className={className} />;
+        }
+        return <img src={blobUrl} alt="A photo shared in the chat" className={className} />;
+    }
+    
+    const placeholderClass = isVideo ? 'aspect-video' : '';
+
+    return (
+        <div ref={ref} className={`${className} ${placeholderClass} bg-slate-200 dark:bg-slate-700 flex items-center justify-center`}>
+            {isLoading ? <SpinnerIcon className="w-6 h-6 text-slate-400 animate-spin" /> : <PhotoIcon className="w-8 h-8 text-slate-400" />}
+        </div>
+    );
+};
+
+
+const PhotoGrid: React.FC<{ photos: Photo[], createBlobUrl: (uri: string) => Promise<string | undefined> }> = ({ photos, createBlobUrl }) => {
     const gridClasses = [
         '', // 0
         'grid-cols-1', // 1
@@ -194,9 +259,9 @@ const PhotoGrid: React.FC<{ photos: Photo[] }> = ({ photos }) => {
                 if (count === 3 && index === 0) itemClass = 'row-span-2';
 
                 return (
-                    <a key={photo.uri} href={photo.blobUrl} target="_blank" rel="noopener noreferrer" className={`overflow-hidden rounded-md ${itemClass}`}>
-                        <img src={photo.blobUrl} alt="Shared content" className="w-full h-full object-cover" />
-                    </a>
+                    <div key={photo.uri} className={`overflow-hidden rounded-md aspect-square ${itemClass}`}>
+                        <LazyMedia uri={photo.uri} createBlobUrl={createBlobUrl} isVideo={false} className="w-full h-full object-cover" />
+                    </div>
                 )
             })}
         </div>
@@ -204,8 +269,8 @@ const PhotoGrid: React.FC<{ photos: Photo[] }> = ({ photos }) => {
 };
 
 
-const VideoDisplay: React.FC<{ video: Video }> = ({ video }) => (
-    <video src={video.blobUrl} controls className="max-w-xs sm:max-w-sm max-h-80 rounded-lg" />
+const VideoDisplay: React.FC<{ video: Video, createBlobUrl: (uri: string) => Promise<string | undefined> }> = ({ video, createBlobUrl }) => (
+     <LazyMedia uri={video.uri} createBlobUrl={createBlobUrl} isVideo={true} className="max-w-xs sm:max-w-sm max-h-80 rounded-lg" />
 );
 
 const MessageBubble: React.FC<{
@@ -217,7 +282,8 @@ const MessageBubble: React.FC<{
     isSearching: boolean;
     onJumpFromSearch?: (messageId: string) => void;
     theme: string;
-}> = ({ message, isOwnMessage, isFirstInGroup, isLastInGroup, searchQuery, isSearching, onJumpFromSearch, theme }) => {
+    createBlobUrl: (uri: string) => Promise<string | undefined>;
+}> = ({ message, isOwnMessage, isFirstInGroup, isLastInGroup, searchQuery, isSearching, onJumpFromSearch, theme, createBlobUrl }) => {
     const themeClasses = THEMES[theme]?.gradient || THEMES.default.gradient;
     const bubbleColor = isOwnMessage ? `${themeClasses} text-white` : 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 shadow-sm';
     
@@ -234,8 +300,8 @@ const MessageBubble: React.FC<{
             <div className={`px-4 py-2.5 ${bubbleColor} ${roundingClasses}`}>
                 {message.content && <p className="whitespace-pre-wrap leading-relaxed"><HighlightedText text={message.content} highlight={searchQuery || ''} /></p>}
                 <div className={`flex flex-col gap-2 ${message.content ? 'mt-2' : ''}`}>
-                    {message.photos && message.photos.length > 0 && <PhotoGrid photos={message.photos} />}
-                    {message.videos?.map((video, index) => <VideoDisplay key={index} video={video} />)}
+                    {message.photos && message.photos.length > 0 && <PhotoGrid photos={message.photos} createBlobUrl={createBlobUrl}/>}
+                    {message.videos?.map((video, index) => <VideoDisplay key={index} video={video} createBlobUrl={createBlobUrl}/>)}
                 </div>
             </div>
              <span className="text-xs text-slate-400 dark:text-slate-500 mb-1 hidden group-hover:block">{formatTimestamp(message.timestamp_ms)}</span>
@@ -253,12 +319,13 @@ const MessageGroup: React.FC<{
     customAvatarUrl?: string | null;
     onAvatarClick?: () => void;
     theme: string;
-}> = ({ messages, isOwnMessage, showAvatar, searchQuery, isSearching, onJumpFromSearch, customAvatarUrl, onAvatarClick, theme }) => {
+    createBlobUrl: (uri: string) => Promise<string | undefined>;
+}> = ({ messages, isOwnMessage, showAvatar, searchQuery, isSearching, onJumpFromSearch, customAvatarUrl, onAvatarClick, theme, createBlobUrl }) => {
     if (!messages.length) return null;
     const senderName = messages[0].sender_name;
 
     return (
-        <div className={`flex flex-col gap-0.5 w-full ${isOwnMessage ? 'items-end' : 'items-start'}`}>
+        <div className={`flex flex-col gap-0.5 w-full ${isOwnMessage ? 'items-end' : 'items-start'} opacity-0 animate-[fade-in_0.5s_ease-out_forwards]`}>
             <div className={`flex gap-3 ${isOwnMessage ? 'flex-row-reverse' : 'flex-row'}`}>
                 {!isOwnMessage && showAvatar && <UserAvatar name={senderName} className="w-9 h-9 self-end" imageUrl={customAvatarUrl} onClick={onAvatarClick ? (e) => { e.stopPropagation(); onAvatarClick(); } : undefined} />}
                 <div className="flex flex-col gap-0.5">
@@ -274,6 +341,7 @@ const MessageGroup: React.FC<{
                             isSearching={isSearching}
                             onJumpFromSearch={onJumpFromSearch}
                             theme={theme}
+                            createBlobUrl={createBlobUrl}
                         />
                     ))}
                 </div>
@@ -402,9 +470,9 @@ const SettingsModal: React.FC<{
     );
 };
 
-type MediaItem = (Photo | Video) & { type: 'photo' | 'video', sender: string, timestamp_ms: number, messageId: string };
+type MediaItem = (Photo | Video) & { type: 'photo' | 'video', sender: string, timestamp_ms: number, messageId: string, blobUrl?: string };
 
-const MediaGallery: React.FC<{ chat: Chat | null, onJumpToMessage: (item: MediaItem) => void }> = ({ chat, onJumpToMessage }) => {
+const MediaGallery: React.FC<{ chat: Chat | null, onJumpToMessage: (item: MediaItem) => void, createBlobUrl: (uri: string) => Promise<string | undefined> }> = ({ chat, onJumpToMessage, createBlobUrl }) => {
     const [mediaTypeFilter, setMediaTypeFilter] = useState<'all' | 'photos' | 'videos'>('all');
     const [senderFilter, setSenderFilter] = useState<string>('all');
 
@@ -455,16 +523,7 @@ const MediaGallery: React.FC<{ chat: Chat | null, onJumpToMessage: (item: MediaI
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2">
                         {filteredMedia.map(item => (
                              <div key={item.uri} className="aspect-square bg-slate-200 dark:bg-slate-800 rounded-md overflow-hidden relative group">
-                                {item.type === 'photo' ? (
-                                    <img src={item.blobUrl} alt="Shared content" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
-                                ) : (
-                                    <>
-                                        <video src={item.blobUrl} className="w-full h-full object-cover" />
-                                        <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
-                                            <PlayCircleIcon className="w-10 h-10 text-white/80" />
-                                        </div>
-                                    </>
-                                )}
+                                <LazyMedia uri={item.uri} createBlobUrl={createBlobUrl} isVideo={item.type === 'video'} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
                                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                                 <div
                                     onClick={() => onJumpToMessage(item)}
@@ -501,11 +560,12 @@ interface InstagramChatViewerProps {
     chats: Chat[];
     ownerName: string;
     onLoadMessages: (chatPath: string) => Promise<Message[]>;
+    createBlobUrl: (uri: string) => Promise<string | undefined>;
     theme: Theme;
     onThemeToggle: () => void;
 }
 
-const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerName, onLoadMessages, theme, onThemeToggle }) => {
+const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerName, onLoadMessages, createBlobUrl, theme, onThemeToggle }) => {
     const [loadedChats, setLoadedChats] = useState<Record<string, Chat>>({});
     const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
@@ -529,7 +589,7 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
     const userForAvatarChange = useRef<string | null>(null);
     
     const [displayedMessageCount, setDisplayedMessageCount] = useState(MESSAGES_PER_PAGE);
-    const scrollState = useRef({ isRestoring: false, oldScrollHeight: 0 });
+    const scrollState = useRef({ isRestoring: false, oldScrollHeight: 0, shouldScrollToBottom: true });
 
     const selectedChat = useMemo(() => loadedChats[selectedChatId || ''] || null, [selectedChatId, loadedChats]);
     
@@ -586,9 +646,10 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
 
      useEffect(() => {
         const styleId = 'message-highlight-style';
-        if (document.getElementById(styleId)) return;
+        let style = document.getElementById(styleId);
+        if (style) return;
 
-        const style = document.createElement('style');
+        style = document.createElement('style');
         style.id = styleId;
         style.innerHTML = `
             @keyframes highlight-animation {
@@ -597,6 +658,13 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
             }
             .highlight-message > div {
                 animation: highlight-animation 2.5s ease-out;
+            }
+            @keyframes fade-in {
+                from { opacity: 0; transform: translateY(10px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+            .animate-fade-in {
+                animation: fade-in 0.3s ease-out forwards;
             }
         `;
         document.head.appendChild(style);
@@ -607,6 +675,7 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
         
         const element = document.getElementById(`message-${scrollToMessageId}`);
         if (element) {
+            scrollState.current.shouldScrollToBottom = false;
             element.scrollIntoView({ behavior: 'smooth', block: 'center' });
             element.classList.add('highlight-message');
             
@@ -681,19 +750,37 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
     };
 
     const handleJumpToMessage = useCallback((item: MediaItem) => {
-        if (!selectedChat) return;
-        if (loadingStrategy === 'infinite' && displayedMessageCount < selectedChat.messages.length) {
-            setDisplayedMessageCount(selectedChat.messages.length);
+        if (!selectedChat?.messages) return;
+        const messageIndex = selectedChat.messages.findIndex(m => m.id === item.messageId);
+        if (messageIndex === -1) return;
+
+        if (loadingStrategy === 'infinite') {
+            const totalMessages = selectedChat.messages.length;
+            const requiredCount = totalMessages - messageIndex;
+            const newCount = Math.min(totalMessages, Math.max(displayedMessageCount, requiredCount + (MESSAGES_PER_PAGE / 2)));
+            if (newCount > displayedMessageCount) {
+                setDisplayedMessageCount(newCount);
+            }
         }
+        
         setActiveTab('messages');
         setScrollToMessageId(item.messageId);
     }, [selectedChat, loadingStrategy, displayedMessageCount]);
     
     const handleJumpFromSearch = useCallback((messageId: string) => {
-        if (!selectedChat) return;
-        if (loadingStrategy === 'infinite' && displayedMessageCount < selectedChat.messages.length) {
-            setDisplayedMessageCount(selectedChat.messages.length);
+        if (!selectedChat?.messages) return;
+        const messageIndex = selectedChat.messages.findIndex(m => m.id === messageId);
+        if (messageIndex === -1) return;
+
+        if (loadingStrategy === 'infinite') {
+            const totalMessages = selectedChat.messages.length;
+            const requiredCount = totalMessages - messageIndex;
+            const newCount = Math.min(totalMessages, Math.max(displayedMessageCount, requiredCount + (MESSAGES_PER_PAGE / 2)));
+            if (newCount > displayedMessageCount) {
+                setDisplayedMessageCount(newCount);
+            }
         }
+        
         setSearchQuery('');
         setScrollToMessageId(messageId);
     }, [selectedChat, loadingStrategy, displayedMessageCount]);
@@ -702,25 +789,34 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
         setIsSidebarVisible(false);
         setSearchQuery('');
         setActiveTab('messages');
+        scrollState.current.shouldScrollToBottom = true;
+
         if (loadingStrategy === 'infinite') {
             setDisplayedMessageCount(MESSAGES_PER_PAGE);
         } else {
             setDisplayedMessageCount(Number.MAX_SAFE_INTEGER);
         }
-
-        if (loadedChats[chat.id]) {
+    
+        if (loadedChats[chat.id]?.messages?.length > 0) {
             setSelectedChatId(chat.id);
             return;
         }
-
+    
         setSelectedChatId(chat.id);
         setIsLoading(true);
         setError(null);
         try {
-            const messages = await onLoadMessages(chat.path);
+            let messages: Message[];
+            if (chat.messages && chat.messages.length > 0) {
+                 messages = chat.messages;
+            } else {
+                messages = await onLoadMessages(chat.path);
+            }
+    
             const fullChat = { ...chat, messages };
             setLoadedChats(prev => ({ ...prev, [chat.id]: fullChat }));
-             if (loadingStrategy === 'full') {
+            
+            if (loadingStrategy === 'full' || (chat.messages && chat.messages.length > 0)) {
                 setDisplayedMessageCount(messages.length);
             }
         } catch (e) {
@@ -741,7 +837,7 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
         const container = scrollContainerRef.current;
         if (!container) return;
 
-        scrollState.current = { isRestoring: true, oldScrollHeight: container.scrollHeight };
+        scrollState.current = { isRestoring: true, oldScrollHeight: container.scrollHeight, shouldScrollToBottom: false };
         const totalMessages = selectedChat?.messages?.length || 0;
         setDisplayedMessageCount(prev => Math.min(totalMessages, prev + MESSAGES_PER_PAGE));
     }, [isLoading, hasMoreMessages, selectedChat?.messages.length]);
@@ -753,7 +849,7 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
                     loadMoreMessages();
                 }
             },
-            { root: scrollContainerRef.current, threshold: 0.5 }
+            { root: scrollContainerRef.current, threshold: 0.1 }
         );
 
         const sentinel = topSentinelRef.current;
@@ -771,8 +867,9 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
         if (scrollState.current.isRestoring) {
             container.scrollTop = container.scrollHeight - scrollState.current.oldScrollHeight;
             scrollState.current.isRestoring = false;
-        } else if (!scrollToMessageId) {
+        } else if (scrollState.current.shouldScrollToBottom && !scrollToMessageId) {
             container.scrollTop = container.scrollHeight;
+            scrollState.current.shouldScrollToBottom = false;
         }
     }, [displayedMessages, scrollToMessageId]);
 
@@ -962,6 +1059,7 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
                                                                 customAvatarUrl={customAvatars[firstMessage.sender_name]}
                                                                 onAvatarClick={() => handleAvatarChangeClick(firstMessage.sender_name)}
                                                                 theme={selectedChatTheme}
+                                                                createBlobUrl={createBlobUrl}
                                                             />
                                                         </React.Fragment>
                                                     );
@@ -970,7 +1068,7 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
                                         </div>
                                     </div>
                                     <div className={`absolute inset-0 transition-opacity duration-300 ${activeTab === 'media' ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-                                        <MediaGallery chat={selectedChat} onJumpToMessage={handleJumpToMessage} />
+                                        <MediaGallery chat={selectedChat} onJumpToMessage={handleJumpToMessage} createBlobUrl={createBlobUrl} />
                                     </div>
                                 </>
                             )}
