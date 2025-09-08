@@ -100,34 +100,39 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
     const handleProcessArchive = async () => {
         if (!selectedFile) return;
 
-        // Reset state
         setErrorMessage('');
         setChats([]);
         setOwnerName('');
         zipRef.current = null;
 
         try {
-            // Step 1: Upload the file securely to Vercel Blob
+            // Step 1: Request a secure upload URL from our serverless function.
             setStatus('uploading');
-            setProcessingStep('Uploading file securely...');
+            setProcessingStep('Preparing secure upload...');
             
-            const uploadResponse = await fetch(
-              `/api/upload?filename=${encodeURIComponent(selectedFile.name)}`,
-              {
+            const response = await fetch('/api/upload', {
                 method: 'POST',
-                body: selectedFile,
-              },
-            );
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename: selectedFile.name }),
+            });
 
+            if (!response.ok) {
+                throw new Error('Failed to prepare the upload. Please try again.');
+            }
+            const { url: uploadUrl } = await response.json();
+
+            // Step 2: Upload the file directly to Vercel's Blob storage.
+            setProcessingStep('Uploading file securely...');
+            const uploadResponse = await fetch(uploadUrl, {
+                method: 'PUT',
+                body: selectedFile,
+            });
+            
             if (!uploadResponse.ok) {
-                const errorData = await uploadResponse.json();
-                throw new Error(errorData.error || 'File upload failed. Please try again.');
+                throw new Error('File upload failed. Please try again.');
             }
             
-            const newBlob = await uploadResponse.json();
-            console.log('Upload successful:', newBlob);
-
-            // Step 2: Process the file locally with JSZip
+            // Step 3: Process the file locally with JSZip
             setStatus('processing');
             setProcessingStep('Loading ZIP file...');
             const zip = await JSZip.loadAsync(selectedFile);
