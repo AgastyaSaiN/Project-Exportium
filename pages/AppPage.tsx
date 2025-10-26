@@ -1,7 +1,12 @@
+
 import React from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { PLATFORMS } from '../constants';
+import SnapchatPage from './apps/snapchat/SnapchatPage';
 import InstagramPage from './apps/InstagramPage';
+import WhatsAppPage from './apps/whatsapp/WhatsAppPage';
+import TelegramPage from './apps/telegram/TelegramPage';
+
 
 const ArrowLeftIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
@@ -31,22 +36,30 @@ const AppPage: React.FC = () => {
     }
 
     // Render specific component based on the platform slug
+    if (platform.slug === 'snapchat') {
+        return <SnapchatPage platform={platform} />;
+    }
     if (platform.slug === 'instagram') {
         return <InstagramPage platform={platform} />;
     }
+    if (platform.slug === 'whatsapp') {
+        return <WhatsAppPage platform={platform} />;
+    }
+    if (platform.slug === 'telegram') {
+        return <TelegramPage platform={platform} />;
+    }
 
-    // Fallback for other platforms that are not yet implemented
-    const { name: Name, icon: Icon, color } = platform;
 
+    // Fallback in case PLATFORMS constant is modified to include other apps without adding logic here.
     return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-4">
             <div className="text-center">
-                <Icon className={`w-24 h-24 mx-auto mb-6 ${color}`} />
+                <platform.icon className={`w-24 h-24 mx-auto mb-6 ${platform.color}`} />
                 <h1 className="text-5xl font-bold text-gray-900">
-                    {Name} Archive
+                    {platform.name} Archive
                 </h1>
                 <p className="mt-4 text-xl text-gray-500">
-                    Coming Soon! The importer for {Name} is under construction.
+                    Importer not implemented for {platform.name}.
                 </p>
                 <div className="mt-12">
                      <Link

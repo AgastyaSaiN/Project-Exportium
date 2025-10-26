@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Link } from 'react-router-dom';
 
@@ -13,6 +12,7 @@ const PlatformCard: React.FC<PlatformCardProps> = ({ name, slug, icon: Icon, col
   const colorMap: { [key: string]: string } = {
     'text-pink-500': 'shadow-pink-500/25',
     'text-green-500': 'shadow-green-500/25',
+    'text-yellow-400': 'shadow-yellow-400/25',
     'text-gray-800': 'shadow-gray-500/25',
     'text-blue-600': 'shadow-blue-600/25',
     'text-sky-500': 'shadow-sky-500/25',

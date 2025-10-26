@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import JSZip from 'jszip';
@@ -242,14 +243,14 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
         setSingleFolderFileMap(null);
         try {
             const fileList = Array.from(files);
-            const firstPath = fileList[0].webkitRelativePath;
+            const firstPath = (fileList[0] as any).webkitRelativePath;
             if (!firstPath) {
                 throw new Error("Your browser does not support folder uploads. Please try Chrome, Edge, or Firefox.");
             }
             const basePath = firstPath.substring(0, firstPath.indexOf('/') + 1);
 
             const fileMap = new Map<string, File>();
-            fileList.forEach(file => {
+            fileList.forEach((file: any) => {
                 const relativePath = file.webkitRelativePath.replace(basePath, '');
                 if (relativePath) fileMap.set(relativePath, file);
             });

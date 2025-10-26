@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 // --- Icon Components ---
@@ -14,6 +13,12 @@ const InstagramIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
         <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
         <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
         <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
+    </svg>
+);
+
+const SnapchatIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+    <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
+        <path d="M12.002 2.006C7.584 2.006 4 5.592 4 10.005v.553c0 3.328 1.463 6.324 3.82 8.256.002.002.004.004.006.005a.707.707 0 00.708-.002c.22-.16.37-.41.37-.68V16.5c0-.414.336-.75.75-.75h6.69c.414 0 .75.336.75.75v1.64c0 .268.15.52.37.68.002.001.003.003.005.004a.707.707 0 00.708 0c2.357-1.933 3.82-4.928 3.82-8.256v-.553c0-4.413-3.584-8-7.998-8zM9.001 9.505c-.828 0-1.5-.895-1.5-2s.672-2 1.5-2 1.5.895 1.5 2-.672 2-1.5 2zm6 0c-.828 0-1.5-.895-1.5-2s.672-2 1.5-2 1.5.895 1.5 2-.672 2-1.5 2z" />
     </svg>
 );
 
@@ -43,7 +48,7 @@ const GmailIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
 
 const YouTubeIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
     <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
-        <path d="M10 15l5.19-3L10 9v6m11.56-7.83c.13.47.22 1.1.28 1.9.07.8.1 1.49.1 2.09L22 12c0 2.19-.16 3.8-.44 4.83-.25.9-.83 1.48-1.73 1.73-.47.13-1.33.22-2.65.28-1.3.07-2.49.1-3.59.1L12 19c-4.19 0-6.8-.16-7.83-.44-.9-.25-1.48-.83-1.73-1.73-.13-.47-.22-1.1-.28-1.9-.07-.8-.1-1.49-.1-2.09L2 12c0-2.19.16-3.8.44-4.83.25-.9.83-1.48 1.73-1.73.47-.13 1.33.22 2.65.28 1.3.07 2.49.1 3.59.1L12 5c4.19 0 6.8.16 7.83.44.9.25 1.48.83 1.73 1.73z" />
+        <path d="M10 15l5.19-3L10 9v6m11.56-7.83c.13.47.22 1.1.28 1.9.07.8.1 1.49.1 2.09L22 12c0 2.19-.16 3.8-.44 4.83-.25.9-.83 1.48-1.73 1.73-.47.13-1.33.22-2.65.28-1.3.07-2.49.1-3.59.1L12 19c-4.19 0-6.8-.16-7.83-.44-.9-.25-1.48-.83-1.73-1.73-.13-.47-.22-1.1-.28-1.9-.07-.8-.1-1.49-.1-2.09L2 12c0-2.19.16-3.8.44-4.83.25.9.83 1.48 1.73 1.73.47-.13 1.33.22 2.65.28 1.3.07 2.49.1 3.59.1L12 5c4.19 0 6.8.16 7.83.44.9.25 1.48.83 1.73 1.73z" />
     </svg>
 );
 
@@ -57,11 +62,8 @@ export interface Platform {
 }
 
 export const PLATFORMS: Platform[] = [
-  { name: 'WhatsApp', slug: 'whatsapp', icon: WhatsAppIcon, color: 'text-green-500' },
   { name: 'Instagram', slug: 'instagram', icon: InstagramIcon, color: 'text-pink-500' },
-  { name: 'Twitter / X', slug: 'x', icon: XIcon, color: 'text-gray-800' },
-  { name: 'Facebook', slug: 'facebook', icon: FacebookIcon, color: 'text-blue-600' },
+  { name: 'WhatsApp', slug: 'whatsapp', icon: WhatsAppIcon, color: 'text-green-500' },
+  { name: 'Snapchat', slug: 'snapchat', icon: SnapchatIcon, color: 'text-yellow-400' },
   { name: 'Telegram', slug: 'telegram', icon: TelegramIcon, color: 'text-sky-500' },
-  { name: 'Gmail', slug: 'gmail', icon: GmailIcon, color: 'text-red-500' },
-  { name: 'YouTube', slug: 'youtube', icon: YouTubeIcon, color: 'text-red-600' },
 ];
