@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import JSZip from 'jszip';
 import { Platform } from '../../../constants';
 import SnapchatChatViewer from './SnapchatChatViewer';
-import { Chat, Message } from './types';
+import { Chat, Message, SnapchatMedia } from './types';
 
 // --- Icon Components ---
 
@@ -39,12 +39,15 @@ interface SnapchatPageProps {
     platform: Platform;
 }
 
+const parseSnapchatTimestamp = (ts: string): number => new Date(ts.replace(' UTC', 'Z')).getTime();
+
 const SnapchatPage: React.FC<SnapchatPageProps> = ({ platform }) => {
     const { name, icon: Icon, color } = platform;
     const [status, setStatus] = useState<'idle' | 'processing' | 'error'>('idle');
     const [processingStep, setProcessingStep] = useState('');
     const [errorMessage, setErrorMessage] = useState<string>('');
     const [chats, setChats] = useState<Chat[]>([]);
+    const [stickers, setStickers] = useState<SnapchatMedia[]>([]);
     const [ownerName, setOwnerName] = useState<string>('');
     const [theme, setTheme] = useState<'light' | 'dark'>('dark');
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -68,6 +71,7 @@ const SnapchatPage: React.FC<SnapchatPageProps> = ({ platform }) => {
         setStatus('processing');
         setErrorMessage('');
         setChats([]);
+        setStickers([]);
         setOwnerName('');
 
         try {
@@ -76,151 +80,171 @@ const SnapchatPage: React.FC<SnapchatPageProps> = ({ platform }) => {
 
             setProcessingStep('Identifying user...');
             let determinedOwnerName: string | null = null;
-
-            // Try 'user_profile.json' first (older format)
-            const userProfileFile = zip.file('json/user_profile.json');
-            if (userProfileFile) {
-                try {
-                    const content = await userProfileFile.async('string');
-                    const data = JSON.parse(content);
-                    if (data.username) {
-                        determinedOwnerName = data.username;
-                    }
-                } catch(e) { console.warn("Could not parse json/user_profile.json", e); }
-            }
-
-            // If not found, try 'account.json' (newer format)
-            if (!determinedOwnerName) {
-                const accountFile = zip.file('json/account.json');
-                if (accountFile) {
-                     try {
-                        const content = await accountFile.async('string');
-                        const data = JSON.parse(content);
-                        // Snapchat's new export format can have a list of accounts
-                        const mainAccount = Array.isArray(data) ? data[0] : data;
-                        if (mainAccount && mainAccount.Username) {
-                             determinedOwnerName = mainAccount.Username;
-                        }
-                    } catch(e) { console.warn("Could not parse json/account.json", e); }
-                }
-            }
-            
-            // As another fallback, check login history
-            if (!determinedOwnerName) {
-                const loginHistoryFile = zip.file('json/login_history.json');
-                if (loginHistoryFile) {
+            const userProfilePaths = ['json/user_profile.json', 'json/account.json', 'json/login_history.json'];
+            for(const path of userProfilePaths) {
+                const file = zip.file(path);
+                if (file) {
                     try {
-                        const content = await loginHistoryFile.async('string');
+                        const content = await file.async('string');
                         const data = JSON.parse(content);
-                        // Find the first valid username from any login event
-                        if (data['Login History'] && Array.isArray(data['Login History'])) {
-                            const loginWithUsername = data['Login History'].find((event: any) => event.Username);
-                            if (loginWithUsername) {
-                                determinedOwnerName = loginWithUsername.Username;
-                            }
-                        }
-                    } catch (e) { console.warn("Could not parse json/login_history.json", e); }
+                        if(path.includes('user_profile')) determinedOwnerName = data.username;
+                        if(path.includes('account')) determinedOwnerName = (Array.isArray(data) ? data[0] : data)?.Username;
+                        if(path.includes('login_history')) determinedOwnerName = data['Login History']?.find((e: any) => e.Username)?.Username;
+                        if(determinedOwnerName) break;
+                    } catch(e) { console.warn(`Could not parse ${path}`, e); }
                 }
             }
-
-            if (!determinedOwnerName) {
-                // Fallback to a default name instead of throwing an error.
-                // The user can correct the alignment in the chat viewer settings.
-                determinedOwnerName = "You";
-            }
+            determinedOwnerName = determinedOwnerName || "You";
             setOwnerName(determinedOwnerName);
+            
+            setProcessingStep('Discovering media files...');
+            const allMediaMap = new Map<string, SnapchatMedia>();
+            const mediaFolders = ['memories', 'chat_media'];
+            const mediaScanPromises: Promise<void>[] = [];
 
+            mediaFolders.forEach(folderName => {
+                zip.folder(folderName)?.forEach((relativePath, file) => {
+                    if (!file.dir && /\.(jpg|jpeg|png|mp4|mov)$/i.test(relativePath)) {
+                        const promise = async () => {
+                            try {
+                                const blob = await file.async('blob');
+                                const fullPath = `${folderName}/${relativePath}`;
+                                allMediaMap.set(fullPath, {
+                                    type: /\.(mp4|mov)$/i.test(relativePath) ? 'video' : 'image',
+                                    path: fullPath,
+                                    blobUrl: URL.createObjectURL(blob),
+                                });
+                            } catch (e) {
+                                console.error(`Failed to process media file: ${relativePath}`, e);
+                            }
+                        };
+                        mediaScanPromises.push(promise());
+                    }
+                });
+            });
+            await Promise.all(mediaScanPromises);
+            
+            const memoriesHistoryFile = zip.file('json/memories_history.json');
+            if(memoriesHistoryFile) {
+                try {
+                    const content = await memoriesHistoryFile.async('string');
+                    const data = JSON.parse(content);
+                    if(data["Saved Media"]) {
+                        data["Saved Media"].forEach((item: any) => {
+                           const mediaPath = item["Media ID"];
+                           if(mediaPath && allMediaMap.has(mediaPath)) {
+                              const mediaItem = allMediaMap.get(mediaPath)!;
+                              mediaItem.date = parseSnapchatTimestamp(item.Date);
+                           }
+                        });
+                    }
+                } catch(e) {
+                    console.warn("Could not parse memories_history.json", e);
+                }
+            }
 
             setProcessingStep('Parsing chat history...');
             const chatHistoryFile = zip.file('json/chat_history.json');
-            if (!chatHistoryFile) {
-                throw new Error("Could not find 'json/chat_history.json'. This file is required to view conversations.");
-            }
+            if (!chatHistoryFile) throw new Error("Could not find 'json/chat_history.json'. This file is required to view conversations.");
             const chatHistoryContent = await chatHistoryFile.async('string');
             const chatHistoryData = JSON.parse(chatHistoryContent);
 
             let allMessagesRaw: any[] = [];
-            
-            // Try known keys first
             const receivedKeys = ['Received Saved-in-Chat History', 'Received Chat History'];
             const sentKeys = ['Sent Saved-in-Chat History', 'Sent Chat History'];
-            
-            receivedKeys.forEach(key => {
-                if (Array.isArray(chatHistoryData[key])) {
-                    allMessagesRaw.push(...chatHistoryData[key].map((m: any) => ({ ...m, type: 'received' })));
-                }
-            });
-
-            sentKeys.forEach(key => {
-                if (Array.isArray(chatHistoryData[key])) {
-                     allMessagesRaw.push(...chatHistoryData[key].map((m: any) => ({ ...m, type: 'sent' })));
-                }
-            });
-
-            // If no messages found, dynamically search the JSON structure
+            receivedKeys.forEach(key => { if (Array.isArray(chatHistoryData[key])) allMessagesRaw.push(...chatHistoryData[key].map((m: any) => ({ ...m, type: 'received' }))); });
+            sentKeys.forEach(key => { if (Array.isArray(chatHistoryData[key])) allMessagesRaw.push(...chatHistoryData[key].map((m: any) => ({ ...m, type: 'sent' }))); });
             if (allMessagesRaw.length === 0) {
                  for (const key in chatHistoryData) {
                     if (Object.prototype.hasOwnProperty.call(chatHistoryData, key) && Array.isArray(chatHistoryData[key])) {
-                        const potentialMessages = chatHistoryData[key];
-                        // Check if the array contains message-like objects
-                        if (potentialMessages.length > 0 && potentialMessages[0].Created && (potentialMessages[0].From || potentialMessages[0].To)) {
-                            potentialMessages.forEach((msg: any) => {
-                                // Heuristic: Sent messages have a 'To' field. Received have a 'From' field.
-                                if (msg.To) {
-                                    allMessagesRaw.push({ ...msg, type: 'sent' });
-                                } else if (msg.From) {
-                                     allMessagesRaw.push({ ...msg, type: 'received' });
-                                }
-                            });
+                        const p = chatHistoryData[key];
+                        if (p.length > 0 && p[0].Created && (p[0].From || p[0].To)) {
+                            p.forEach((msg: any) => allMessagesRaw.push({ ...msg, type: msg.To ? 'sent' : 'received' }));
                         }
                     }
                 }
             }
-
-            if (allMessagesRaw.length === 0) {
-                throw new Error("Could not find any saved chat messages in 'chat_history.json'. The file might be empty, or in a new, unrecognized format. Note: Snapchat only exports messages you've manually saved.");
-            }
+            if (allMessagesRaw.length === 0) throw new Error("Could not find any saved chat messages in 'json/chat_history.json'. The file might be empty, or in a new, unrecognized format. Note: Snapchat only exports messages you've manually saved.");
             
-            setProcessingStep('Organizing conversations...');
-            const parseSnapchatTimestamp = (ts: string): number => new Date(ts.replace(' UTC', 'Z')).getTime();
-
             allMessagesRaw.sort((a, b) => parseSnapchatTimestamp(a.Created) - parseSnapchatTimestamp(b.Created));
 
             const conversations = new Map<string, Chat>();
+            const usedMediaPaths = new Set<string>();
 
             for (const rawMsg of allMessagesRaw) {
                 const isSent = rawMsg.type === 'sent';
                 const otherUser = isSent ? rawMsg.To : rawMsg.From;
-                
                 if (!conversations.has(otherUser)) {
-                    conversations.set(otherUser, {
-                        id: otherUser,
-                        title: otherUser,
-                        participants: [{ name: determinedOwnerName }, { name: otherUser }],
-                        messages: [],
-                        lastActivity: 0
-                    });
+                    conversations.set(otherUser, { id: otherUser, title: otherUser, participants: [{ name: determinedOwnerName }, { name: otherUser }], messages: [], lastActivity: 0 });
                 }
-
                 const chat = conversations.get(otherUser)!;
                 const timestamp = parseSnapchatTimestamp(rawMsg.Created);
-
                 const message: Message = {
                     id: `${timestamp}-${chat.messages.length}`,
                     sender_name: isSent ? determinedOwnerName : otherUser,
                     timestamp_ms: timestamp,
                     media_type: rawMsg['Media Type'],
-                    content: rawMsg.Text || rawMsg.Content,
+                    content: rawMsg.Text || rawMsg.Content
                 };
-                
+
+                const mediaPath = rawMsg.Media;
+                if (mediaPath && allMediaMap.has(mediaPath)) {
+                    const mediaItem = allMediaMap.get(mediaPath)!;
+                    message.linkedMedia = mediaItem;
+                    usedMediaPaths.add(mediaPath);
+                }
+
                 chat.messages.push(message);
                 chat.lastActivity = timestamp;
             }
 
-            const finalChats = Array.from(conversations.values())
-                .sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0));
+            setProcessingStep('Linking media to chats...');
+            const datedMediaForHeuristic = Array.from(allMediaMap.values())
+                .filter(m => m.date !== undefined)
+                .sort((a, b) => a.date! - b.date!);
+            
+            const TIME_THRESHOLD_MS = 15000;
 
-            setChats(finalChats);
+            for (const chat of conversations.values()) {
+                for (const message of chat.messages) {
+                    if (!message.linkedMedia && ['MEDIA', 'VIDEO', 'NOTE'].includes(message.media_type)) {
+                        let bestMatch: SnapchatMedia | null = null;
+                        let smallestDiff = Infinity;
+                        
+                        for (const mediaItem of datedMediaForHeuristic) {
+                            if (usedMediaPaths.has(mediaItem.path)) continue;
+                            const diff = Math.abs(mediaItem.date! - message.timestamp_ms);
+                            if (diff < smallestDiff && diff < TIME_THRESHOLD_MS) {
+                                smallestDiff = diff;
+                                bestMatch = mediaItem;
+                            }
+                        }
+
+                        if (bestMatch) {
+                            message.linkedMedia = bestMatch;
+                            usedMediaPaths.add(bestMatch.path);
+                        }
+                    }
+                }
+            }
+            
+            setChats(Array.from(conversations.values()).sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0)));
+
+            const stickerPromises: Promise<SnapchatMedia | null>[] = [];
+            zip.folder('stickers')?.forEach((relativePath, file) => {
+                 if (!file.dir && /\.(png|webp|gif)$/i.test(relativePath)) {
+                    const promise = async (): Promise<SnapchatMedia | null> => {
+                        try {
+                            const blob = await file.async('blob');
+                            return { type: 'sticker', path: `stickers/${relativePath}`, blobUrl: URL.createObjectURL(blob) };
+                        } catch (e) { return null; }
+                    };
+                    stickerPromises.push(promise());
+                 }
+            });
+            const allStickers = (await Promise.all(stickerPromises)).filter((s): s is SnapchatMedia => s !== null);
+            setStickers(allStickers);
+
             setStatus('idle');
         
         } catch (error) {
@@ -237,6 +261,7 @@ const SnapchatPage: React.FC<SnapchatPageProps> = ({ platform }) => {
         setStatus('idle');
         setErrorMessage('');
         setChats([]);
+        setStickers([]);
         setOwnerName('');
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
@@ -299,7 +324,8 @@ const SnapchatPage: React.FC<SnapchatPageProps> = ({ platform }) => {
     if (chats.length > 0) {
         return (
              <SnapchatChatViewer 
-                chats={chats} 
+                chats={chats}
+                stickers={stickers}
                 ownerName={ownerName} 
                 onReset={handleReset}
                 platform={platform}
