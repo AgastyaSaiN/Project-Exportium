@@ -11,7 +11,7 @@ const SettingsIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => ( <svg 
 const CloseIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>);
 const SearchIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>);
 const XCircleIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>);
-const PhotoIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg>);
+const PhotoIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 017.5 0z" /></svg>);
 const CameraIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.776 48.776 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" /><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" /></svg>);
 const SunIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" /></svg>);
 const MoonIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" /></svg>);
@@ -66,6 +66,7 @@ interface TelegramChatViewerProps { chats: Chat[]; ownerId: string; createBlobUr
 const TelegramChatViewer: React.FC<TelegramChatViewerProps> = ({ chats, ownerId, createBlobUrl, theme, onThemeToggle, onReset }) => {
     const [selectedChatId, setSelectedChatId] = useState<number | null>(chats[0]?.id || null);
     const [searchQuery, setSearchQuery] = useState('');
+    const [chatSearchQuery, setChatSearchQuery] = useState('');
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [customAvatars, setCustomAvatars] = useState<Record<string, string>>({});
     const [isSidebarVisible, setIsSidebarVisible] = useState(true);
@@ -76,6 +77,16 @@ const TelegramChatViewer: React.FC<TelegramChatViewerProps> = ({ chats, ownerId,
 
     const selectedChat = useMemo(() => chats.find(c => c.id === selectedChatId), [selectedChatId, chats]);
     const isSearching = useMemo(() => searchQuery.trim().length > 0, [searchQuery]);
+    
+    const filteredChats = useMemo(() => {
+        if (!chatSearchQuery.trim()) {
+            return chats;
+        }
+        return chats.filter(chat =>
+            chat.name.toLowerCase().includes(chatSearchQuery.toLowerCase())
+        );
+    }, [chats, chatSearchQuery]);
+
     const { messageGroups, searchResultCount } = useMemo(() => { if(!selectedChat) return {messageGroups:[], searchResultCount: null}; const sourceMessages = selectedChat.messages; const filteredMessages = isSearching ? sourceMessages.filter(msg => { const text = getMessagePreview(msg); return text && text.toLowerCase().includes(searchQuery.toLowerCase());}) : sourceMessages; const resultCount = isSearching ? filteredMessages.length : null; const groups: Message[][] = []; if (filteredMessages.length > 0) { let currentGroup: Message[] = [filteredMessages[0]]; for (let i = 1; i < filteredMessages.length; i++) { const newDate = new Date(filteredMessages[i].date).toDateString() !== new Date(filteredMessages[i-1].date).toDateString(); if (!newDate) { currentGroup.push(filteredMessages[i]); } else { groups.push(currentGroup); currentGroup = [filteredMessages[i]]; } } groups.push(currentGroup); } return { messageGroups: groups, searchResultCount: resultCount }; }, [selectedChat, isSearching, searchQuery]);
     useLayoutEffect(() => { const container = scrollContainerRef.current; if(container) { container.scrollTop = container.scrollHeight; } }, [selectedChat, messageGroups]);
     
@@ -89,14 +100,39 @@ const TelegramChatViewer: React.FC<TelegramChatViewerProps> = ({ chats, ownerId,
         <div className="flex w-full h-full bg-white dark:bg-slate-900 overflow-hidden relative">
             <input type="file" ref={avatarInputRef} className="hidden" accept="image/png, image/jpeg, image/gif" onChange={handleAvatarFileSelected}/>
             <aside className={`absolute md:relative w-full md:w-1/3 lg:w-1/4 border-r border-slate-200 dark:border-slate-700 flex flex-col transition-transform duration-300 ease-in-out z-10 bg-white dark:bg-slate-800 h-full ${isSidebarVisible ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
-                <header className="p-4 border-b border-slate-200 dark:border-slate-700"><h2 className="text-xl font-bold text-slate-800 dark:text-slate-200">Your Chats</h2><p className="text-sm text-slate-500 dark:text-slate-400">{chats.length} conversations</p></header>
+                <header className="p-4 border-b border-slate-200 dark:border-slate-700 space-y-3">
+                    <div>
+                        <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200">Your Chats</h2>
+                        <p className="text-sm text-slate-500 dark:text-slate-400">{chats.length} conversations</p>
+                    </div>
+                    <div className="relative">
+                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                            <SearchIcon className="w-5 h-5 text-slate-400 dark:text-slate-500" />
+                        </span>
+                        <input
+                            type="text"
+                            placeholder="Search chats..."
+                            value={chatSearchQuery}
+                            onChange={(e) => setChatSearchQuery(e.target.value)}
+                            className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-700 py-1.5 pl-10 pr-4 text-sm text-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-all duration-300"
+                        />
+                    </div>
+                </header>
                 <div className="flex-grow overflow-y-auto">
-                    {chats.map(chat => (
-                        <div key={chat.id} onClick={() => handleSelectChat(chat.id)} className={`p-3 flex items-center cursor-pointer border-l-4 transition-colors duration-200 ${selectedChatId === chat.id ? 'border-sky-500 bg-slate-100 dark:bg-slate-700/50' : 'border-transparent hover:bg-slate-50 dark:hover:bg-slate-700/30'}`}>
-                            <UserAvatar name={chat.name} className="w-11 h-11 text-lg" imageUrl={customAvatars[chat.name]} onClick={(e) => { e.stopPropagation(); handleAvatarChangeClick(chat.name); }} />
-                            <div className="ml-4 truncate flex-grow"><p className="font-semibold text-slate-900 dark:text-slate-100">{chat.name}</p><p className="text-sm text-slate-500 dark:text-slate-400 truncate">{getMessagePreview(chat.messages.slice(-1)[0])}</p></div>
+                    {filteredChats.length > 0 ? (
+                        filteredChats.map(chat => (
+                            <div key={chat.id} onClick={() => handleSelectChat(chat.id)} className={`p-3 flex items-center cursor-pointer border-l-4 transition-colors duration-200 ${selectedChatId === chat.id ? 'border-sky-500 bg-slate-100 dark:bg-slate-700/50' : 'border-transparent hover:bg-slate-50 dark:hover:bg-slate-700/30'}`}>
+                                <UserAvatar name={chat.name} className="w-11 h-11 text-lg" imageUrl={customAvatars[chat.name]} onClick={(e) => { e.stopPropagation(); handleAvatarChangeClick(chat.name); }} />
+                                <div className="ml-4 truncate flex-grow"><p className="font-semibold text-slate-900 dark:text-slate-100">{chat.name}</p><p className="text-sm text-slate-500 dark:text-slate-400 truncate">{getMessagePreview(chat.messages.slice(-1)[0])}</p></div>
+                            </div>
+                        ))
+                    ) : (
+                         <div className="p-4 text-center text-slate-500 dark:text-slate-400">
+                            <p className="text-sm">
+                                {chatSearchQuery ? `No chats matching "${chatSearchQuery}"` : "No chats found."}
+                            </p>
                         </div>
-                    ))}
+                    )}
                 </div>
             </aside>
 
@@ -117,7 +153,6 @@ const TelegramChatViewer: React.FC<TelegramChatViewerProps> = ({ chats, ownerId,
                         </header>
                         
                         <div className="flex-grow overflow-hidden relative">
-                            {/* FIX: Add type assertion to style prop to allow custom CSS properties. */}
                             <div ref={scrollContainerRef} className="h-full p-4 md:p-6 overflow-y-auto bg-slate-100 dark:bg-slate-800 bg-[url('https://uploads-ssl.webflow.com/5a979516ab15960001a2d59a/5ab17498c368380001b8d787_seamless-pattern-with-telegram-l-c63e29f0302489a24d2621742417a58a.png')] dark:bg-[url('https://uploads-ssl.webflow.com/5a979516ab15960001a2d59a/5ab17498c368380001b8d787_seamless-pattern-with-telegram-l-c63e29f0302489a24d2621742417a58a.png')] bg-repeat bg-center" style={{'--tw-bg-opacity': theme === 'dark' ? 0.05 : 0.1} as React.CSSProperties}>
                                 <div className="flex flex-col gap-4 max-w-4xl mx-auto">{isSearching && (<div className="text-center my-2 sticky top-2 z-10"><p className="text-sm text-slate-500 dark:text-slate-400 bg-slate-200/70 dark:bg-slate-700/70 backdrop-blur-sm inline-block px-3 py-1 rounded-full">{searchResultCount === 0 ? 'No messages found.' : `Found ${searchResultCount} message${searchResultCount !== 1 ? 's' : ''}.`}</p></div>)}{messageGroups.map((group, groupIndex) => { const firstMessage = group[0]; if (!firstMessage) return null; const dateStr = formatDateSeparator(new Date(firstMessage.date).getTime()); return (<React.Fragment key={`${firstMessage.date_unixtime}-${groupIndex}`}><div className="flex justify-center my-4 sticky top-2 z-10"><span className="bg-slate-200 dark:bg-slate-900/80 backdrop-blur-sm text-slate-600 dark:text-slate-300 text-xs font-semibold px-3 py-1 rounded-full shadow-sm">{dateStr}</span></div><div className="flex flex-col gap-1">{group.map((message, messageIndex) => { const prevMessage = messageIndex > 0 ? group[messageIndex - 1] : null; const showSender = isGroupChat && (!prevMessage || prevMessage.from_id !== message.from_id); return (<MessageBubble key={message.id} message={message} isOwnMessage={message.from_id === ownerId} showSender={showSender} searchQuery={isSearching ? searchQuery : undefined} createBlobUrl={createBlobUrl} />) })}</div></React.Fragment>);})}</div>
                             </div>
