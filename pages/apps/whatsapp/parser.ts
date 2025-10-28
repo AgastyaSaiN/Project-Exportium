@@ -1,43 +1,50 @@
-
 import { Chat, Message, Photo, Video } from './types';
 
-// Main message format: [DD/MM/YY, HH:MM:SS] Author: Message
-const MESSAGE_REGEX = /^\[?(\d{1,2}[./]\d{1,2}[./]\d{2,4}), (\d{1,2}:\d{2}(?::\d{2})?(?: [AP]M)?)\]? -? ([^:]+): ([\s\S]*)/;
-// For lines that don't match the main format but seem to be continuations
-const CONTINUATION_REGEX = /^(?!\[?\d{1,2}[./]\d{1,2}[./]\d{2,4}, \d{1,2}:\d{2}.*\]? -? .*)/;
-// Media attachment patterns
-const MEDIA_ATTACHED_REGEX = /([\w-]+\.(?:jpg|jpeg|png|webp|gif|mp4|mov|avi|mkv))\s*\(file attached\)/;
-const MEDIA_ATTACHED_IOS_REGEX = /<attached: ([\w-]+\.(?:jpg|jpeg|png|webp|gif|mp4|mov|avi|mkv))>/;
+// Regex to capture a message with an author. Handles different timestamp formats and separators.
+const MESSAGE_WITH_AUTHOR_REGEX = /^\[?(\d{1,2}[./]\d{1,2}[./]\d{2,4}),?\s(\d{1,2}:\d{2}(?::\d{2})?(?:\s[AaPp][Mm])?)\]?(?:\s-\s|\s)([^:]+?):\s([\s\S]+)/;
+// Regex for lines that have a timestamp but no author, typically system messages.
+const MESSAGE_WITHOUT_AUTHOR_REGEX = /^\[?(\d{1,2}[./]\d{1,2}[./]\d{2,4}),?\s(\d{1,2}:\d{2}(?::\d{2})?(?:\s[AaPp][Mm])?)\]?(?:\s-\s|\s)([\s\S]+)/;
+// Regex for message continuations on new lines.
+const CONTINUATION_REGEX = /^(?!\[?\d{1,2}[./]\d{1,2}[./]\d{2,4},?)/;
+
+// Media attachment patterns for both Android and iOS.
+const MEDIA_ATTACHED_REGEX = /([\w\s-]+\.(?:jpg|jpeg|png|webp|gif|mp4|mov|avi|mkv|opus))\s*\(file attached\)/;
+const MEDIA_ATTACHED_IOS_REGEX = /<attached:\s*([\w\s-]+\.(?:jpg|jpeg|png|webp|gif|mp4|mov|avi|mkv|opus))>/;
+const MEDIA_OMITTED_REGEX = /<media omitted>/i;
+
 
 const isImage = (filename: string) => /\.(jpg|jpeg|png|webp|gif)$/i.test(filename);
 const isVideo = (filename: string) => /\.(mp4|mov|avi|mkv)$/i.test(filename);
 
 const parseTimestamp = (dateStr: string, timeStr: string): number => {
-    // Normalize date separator
     const cleanDateStr = dateStr.replace(/\./g, '/');
-    const dateParts = cleanDateStr.split('/').map(Number);
+    const dateParts = cleanDateStr.split('/').map(part => parseInt(part, 10));
     let day: number, month: number, year: number;
 
-    // Common ambiguity: D/M/Y vs M/D/Y. WhatsApp is often locale-dependent.
-    // We'll try a common one (D/M/Y) and acknowledge it might be imperfect.
-    if (dateParts.length === 3) {
-        day = dateParts[0];
-        month = dateParts[1] - 1; // Month is 0-indexed
-        year = dateParts[2] < 100 ? 2000 + dateParts[2] : dateParts[2];
-    } else {
-        return Date.now(); // Fallback
+    // Try to smartly guess date format (DMY vs MDY)
+    if (dateParts[0] > 12 && dateParts[1] <= 12) { // DD/MM/YY
+        day = dateParts[0]; month = dateParts[1] - 1; year = dateParts[2];
+    } else if (dateParts[0] <= 12 && dateParts[1] > 12) { // MM/DD/YY
+        day = dateParts[1]; month = dateParts[0] - 1; year = dateParts[2];
+    } else { // Ambiguous (e.g., 01/02/2023), default to DMY as it's more common globally
+        day = dateParts[0]; month = dateParts[1] - 1; year = dateParts[2];
     }
 
-    let hour = 0, minute = 0;
+    if (year < 100) {
+        year += 2000;
+    }
+    
+    let hour = 0, minute = 0, second = 0;
     const timeLower = timeStr.toLowerCase();
     const isPm = timeLower.includes('pm');
     const isAm = timeLower.includes('am');
     const timeClean = timeLower.replace(/\s*(am|pm)/, '').trim();
-    const timeParts = timeClean.split(':').map(Number);
+    const timeParts = timeClean.split(':').map(part => parseInt(part, 10));
 
     if (timeParts.length >= 2) {
         hour = timeParts[0];
         minute = timeParts[1];
+        second = timeParts[2] || 0;
     }
 
     if (isPm && hour < 12) {
@@ -47,31 +54,54 @@ const parseTimestamp = (dateStr: string, timeStr: string): number => {
         hour = 0;
     }
     
-    // Create date in local time, as WhatsApp exports usually are.
-    return new Date(year, month, day, hour, minute).getTime();
+    return new Date(year, month, day, hour, minute, second).getTime();
 };
 
-export const parseWhatsAppChat = (fileContent: string, fileName: string): Omit<Chat, 'fileMap'> => {
+export interface ParserProgress {
+    type: 'progress';
+    processed: number;
+    total: number;
+}
+
+export interface ParserComplete {
+    type: 'complete';
+    chat: Omit<Chat, 'fileMap'>;
+}
+
+export type ParserResult = ParserProgress | ParserComplete;
+
+
+export async function* parseWhatsAppChat(fileContent: string, fileName: string): AsyncGenerator<ParserResult> {
     const lines = fileContent.split('\n');
+    const totalLines = lines.length;
     const messages: Message[] = [];
     const participants = new Set<string>();
     let lastMessage: Message | null = null;
 
-    for (const line of lines) {
-        const match = line.match(MESSAGE_REGEX);
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (!line.trim()) continue;
 
-        if (match) {
-            const [, dateStr, timeStr, sender, rawContent] = match;
+        if (i > 0 && i % 1000 === 0) {
+            // Yield progress and give the main thread a break
+            yield { type: 'progress', processed: i, total: totalLines };
+            await new Promise(resolve => setTimeout(resolve, 0));
+        }
+
+        const authorMatch = line.match(MESSAGE_WITH_AUTHOR_REGEX);
+        const systemMatch = !authorMatch ? line.match(MESSAGE_WITHOUT_AUTHOR_REGEX) : null;
+        
+        if (authorMatch) {
+            const [, dateStr, timeStr, sender, rawContent] = authorMatch;
             const content = rawContent.trim();
             const timestamp = parseTimestamp(dateStr, timeStr);
             
-            // This is a special character used by WhatsApp for media captions with no text.
-            if (content === '‎') continue;
-            
-            // Add sender to participants list
-            if (sender && !sender.includes('added') && !sender.includes('changed')) {
-                participants.add(sender.trim());
+            if (content === '‎' || MEDIA_OMITTED_REGEX.test(content)) {
+                lastMessage = null; 
+                continue;
             }
+            
+            participants.add(sender.trim());
 
             let photo: Photo | undefined;
             let video: Video | undefined;
@@ -79,18 +109,21 @@ export const parseWhatsAppChat = (fileContent: string, fileName: string): Omit<C
 
             const mediaMatch = content.match(MEDIA_ATTACHED_REGEX) || content.match(MEDIA_ATTACHED_IOS_REGEX);
             if (mediaMatch) {
-                const filename = mediaMatch[1];
+                const filename = mediaMatch[1].trim();
                 if (isImage(filename)) {
                     photo = { uri: filename };
-                    messageContent = '📷 Photo';
                 } else if (isVideo(filename)) {
                     video = { uri: filename };
-                    messageContent = '📹 Video';
+                }
+                messageContent = content.replace(mediaMatch[0], '').trim();
+                if (!messageContent) {
+                   messageContent = photo ? '📷 Photo' : '📹 Video';
                 }
             }
             
             const newMessage: Message = {
                 id: `${timestamp}-${messages.length}`,
+                type: 'message',
                 sender_name: sender.trim(),
                 timestamp_ms: timestamp,
                 content: messageContent,
@@ -100,8 +133,21 @@ export const parseWhatsAppChat = (fileContent: string, fileName: string): Omit<C
 
             messages.push(newMessage);
             lastMessage = newMessage;
-        } else if (lastMessage && line.match(CONTINUATION_REGEX) && line.trim()) {
-            // Append to the content of the last message
+
+        } else if (systemMatch) {
+             const [, dateStr, timeStr, content] = systemMatch;
+             const timestamp = parseTimestamp(dateStr, timeStr);
+             const newMessage: Message = {
+                id: `${timestamp}-${messages.length}`,
+                type: 'system',
+                sender_name: null,
+                timestamp_ms: timestamp,
+                content: content.trim(),
+             };
+             messages.push(newMessage);
+             lastMessage = null;
+
+        } else if (lastMessage && lastMessage.type === 'message' && line.match(CONTINUATION_REGEX) && line.trim()) {
             lastMessage.content += `\n${line.trim()}`;
         }
     }
@@ -112,13 +158,17 @@ export const parseWhatsAppChat = (fileContent: string, fileName: string): Omit<C
 
     const title = fileName
         .replace("WhatsApp Chat with ", "")
-        .replace(/\.\w+$/, ""); // remove extension
+        .replace(/\.zip$/, "")
+        .replace(/\.txt$/, "");
 
-    return {
-        id: fileName,
-        title,
-        participants: Array.from(participants).map(name => ({ name })),
-        messages,
-        lastActivity: messages[messages.length - 1]?.timestamp_ms || Date.now(),
+    yield {
+        type: 'complete',
+        chat: {
+            id: fileName,
+            title,
+            participants: Array.from(participants).map(name => ({ name })),
+            messages,
+            lastActivity: messages[messages.length - 1]?.timestamp_ms || Date.now(),
+        }
     };
-};
+}

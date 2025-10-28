@@ -34,80 +34,6 @@ const ExclamationTriangleIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props)
     </svg>
 );
 
-// --- Placeholder Data ---
-const now = Date.now();
-const PLACEHOLDER_CHAT: Chat = {
-  id: 'placeholder-chat',
-  title: 'Design Team',
-  participants: [
-    { name: 'Alice' },
-    { name: 'Bob' },
-    { name: 'You' },
-  ],
-  messages: [
-    {
-      id: 'msg-1',
-      sender_name: 'Alice',
-      timestamp_ms: now - 1000 * 60 * 60 * 2, // 2 hours ago
-      content: 'Hey everyone, check out the new mockups.',
-    },
-    {
-      id: 'msg-2',
-      sender_name: 'Alice',
-      timestamp_ms: now - 1000 * 60 * 59,
-      content: 'mockups-v1.png (file attached)',
-      photo: { uri: 'mockups-v1.png' },
-    },
-    {
-      id: 'msg-3',
-      sender_name: 'Bob',
-      timestamp_ms: now - 1000 * 60 * 55,
-      content: 'Looking great! I love the color palette. 🎨',
-    },
-    {
-      id: 'msg-4',
-      sender_name: 'You',
-      timestamp_ms: now - 1000 * 60 * 50,
-      content: 'Awesome work, Alice! Just one small feedback point: can we try making the main CTA button a bit larger?',
-    },
-    {
-      id: 'msg-5',
-      sender_name: 'Alice',
-      timestamp_ms: now - 1000 * 60 * 48,
-      content: 'Good point! How about this?',
-    },
-    {
-      id: 'msg-6',
-      sender_name: 'Alice',
-      timestamp_ms: now - 1000 * 60 * 47,
-      content: 'mockups-v2-cta.png (file attached)',
-      photo: { uri: 'mockups-v2-cta.png' },
-    },
-     {
-      id: 'msg-7',
-      sender_name: 'You',
-      timestamp_ms: now - 1000 * 60 * 45,
-      content: 'Perfect! 👌',
-    },
-    {
-        id: 'msg-8',
-        sender_name: 'Bob',
-        timestamp_ms: now - 1000 * 60 * 30,
-        content: "I've also recorded a quick screen capture of the animation prototype.",
-    },
-    {
-        id: 'msg-9',
-        sender_name: 'Bob',
-        timestamp_ms: now - 1000 * 60 * 29,
-        content: 'animation-prototype.mp4 (file attached)',
-        video: { uri: 'animation-prototype.mp4' },
-    },
-  ],
-  lastActivity: now - 1000 * 60 * 29,
-  fileMap: new Map(), // Empty map, as we don't have real files
-};
-
-
 // --- Component ---
 
 interface WhatsAppPageProps {
@@ -116,11 +42,12 @@ interface WhatsAppPageProps {
 
 const WhatsAppPage: React.FC<WhatsAppPageProps> = ({ platform }) => {
     const { name, icon: Icon, color } = platform;
-    const [status, setStatus] = useState<'idle' | 'processing' | 'selecting' | 'error' | 'loaded'>('loaded');
+    const [status, setStatus] = useState<'idle' | 'processing' | 'selecting' | 'error' | 'loaded'>('idle');
     const [processingStep, setProcessingStep] = useState('');
+    const [progress, setProgress] = useState({ processed: 0, total: 1 });
     const [errorMessage, setErrorMessage] = useState<string>('');
-    const [chat, setChat] = useState<Chat | null>(PLACEHOLDER_CHAT);
-    const [ownerName, setOwnerName] = useState<string>('You');
+    const [chat, setChat] = useState<Chat | null>(null);
+    const [ownerName, setOwnerName] = useState<string>('');
     const [theme, setTheme] = useState<'light' | 'dark'>('light');
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -146,56 +73,58 @@ const WhatsAppPage: React.FC<WhatsAppPageProps> = ({ platform }) => {
         setErrorMessage('');
         setChat(null);
         setOwnerName('');
+        setProgress({ processed: 0, total: 1 });
 
         try {
+            let chatContent: string;
+            let fileMap: Map<string, any> | undefined;
+
             if (file.type === 'application/zip' || file.name.endsWith('.zip')) {
                 setProcessingStep('Loading ZIP file...');
                 const zip = await JSZip.loadAsync(file);
                 
-                const chatFile = zip.file('_chat.txt');
+                const chatFileCandidates = zip.file(/\.txt$/i);
+                const chatFile = chatFileCandidates.find(f => !f.name.startsWith('__MACOSX'));
+                
                 if (!chatFile) {
-                    throw new Error("'_chat.txt' not found in the ZIP archive. Please upload a valid WhatsApp export.");
+                    throw new Error("No '.txt' chat file found in the ZIP archive. Please upload a valid WhatsApp export with media.");
                 }
 
                 setProcessingStep('Reading chat file...');
-                const content = await chatFile.async('string');
-
-                setProcessingStep('Parsing messages...');
-                const parsedChatData = parseWhatsAppChat(content, file.name);
+                chatContent = await chatFile.async('string');
                 
-                const fileMap = new Map<string, any>();
-                // FIX: Added type annotation to the 'file' parameter to resolve errors where
-                // properties 'dir' and 'name' were not found on type 'unknown'.
+                fileMap = new Map<string, any>();
                 Object.values(zip.files).forEach((file: JSZip.JSZipObject) => {
                     if (!file.dir) {
                         fileMap.set(file.name, file);
                     }
                 });
 
-                const finalChat: Chat = {
-                    ...parsedChatData,
-                    fileMap,
-                };
-
-                setChat(finalChat);
-                if (finalChat.participants.length > 1) {
-                    setStatus('selecting');
-                } else {
-                    handleUserSelection(finalChat.participants[0]?.name || "You");
-                }
-
             } else { // Assume .txt
                 setProcessingStep('Reading chat file...');
-                const content = await file.text();
+                chatContent = await file.text();
+            }
 
-                setProcessingStep('Parsing messages...');
-                const parsedChatData = parseWhatsAppChat(content, file.name);
+            setProcessingStep('Parsing messages...');
+            const parser = parseWhatsAppChat(chatContent, file.name);
 
-                setChat(parsedChatData); // No fileMap for plain text
-                if (parsedChatData.participants.length > 1) {
-                    setStatus('selecting');
-                } else {
-                    handleUserSelection(parsedChatData.participants[0]?.name || "You");
+            for await (const result of parser) {
+                if (result.type === 'progress') {
+                    setProgress({ processed: result.processed, total: result.total });
+                } else if (result.type === 'complete') {
+                    const finalChat: Chat = {
+                        ...result.chat,
+                        fileMap,
+                    };
+
+                    setChat(finalChat);
+                    if (finalChat.participants.length > 1) {
+                        setStatus('selecting');
+                    } else if (finalChat.participants.length === 1) {
+                        handleUserSelection(finalChat.participants[0]?.name);
+                    } else {
+                        setStatus('loaded');
+                    }
                 }
             }
         
@@ -215,9 +144,11 @@ const WhatsAppPage: React.FC<WhatsAppPageProps> = ({ platform }) => {
 
     const createBlobUrl = async (uri: string, fileMap: Chat['fileMap']): Promise<string | undefined> => {
         if (!fileMap) return undefined;
-        const mediaFile = fileMap.get(uri);
+        const decodedUri = decodeURIComponent(uri);
+        const mediaFile = fileMap.get(uri) || fileMap.get(decodedUri);
+
         if (mediaFile) {
-             const blob = await (mediaFile as any).async('blob');
+             const blob = await mediaFile.async('blob');
              return URL.createObjectURL(blob);
         }
         return undefined;
@@ -228,19 +159,28 @@ const WhatsAppPage: React.FC<WhatsAppPageProps> = ({ platform }) => {
         setErrorMessage('');
         setChat(null);
         setOwnerName('');
+        setProgress({ processed: 0, total: 1 });
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
     const renderContent = () => {
         switch (status) {
             case 'processing':
+                const percent = progress.total > 0 ? Math.round((progress.processed / progress.total) * 100) : 0;
                 return (
-                    <div className="text-center">
+                    <div className="text-center w-full max-w-lg">
                         <SpinnerIcon className="w-20 h-20 mx-auto text-slate-400 animate-spin mb-6" />
-                        <h2 className="text-3xl font-bold text-slate-800 dark:text-slate-200">Processing...</h2>
-                        <p className="mt-2 text-lg text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-                           {processingStep}
-                        </p>
+                        <h2 className="text-3xl font-bold text-slate-800 dark:text-slate-200">{processingStep}</h2>
+                        {processingStep === 'Parsing messages...' && (
+                             <div className="mt-4">
+                                <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5">
+                                    <div className="bg-green-500 h-2.5 rounded-full" style={{ width: `${percent}%` }}></div>
+                                </div>
+                                <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                                    {`Processing line ${progress.processed.toLocaleString()} of ${progress.total.toLocaleString()}...`}
+                                </p>
+                            </div>
+                        )}
                     </div>
                 );
             case 'error':

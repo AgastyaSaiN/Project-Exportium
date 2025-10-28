@@ -11,7 +11,8 @@ export interface Video {
 
 export interface Message {
   id: string;
-  sender_name: string;
+  type: 'message' | 'system';
+  sender_name: string | null; // Null for system messages
   timestamp_ms: number;
   content: string;
   photo?: Photo;
