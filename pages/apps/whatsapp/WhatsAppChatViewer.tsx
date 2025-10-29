@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
 import { Chat, Message, Photo, Video } from './types';
 import { Platform } from '../../../constants';
@@ -29,7 +30,7 @@ const CloseIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xmln
 const SearchIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>);
 const XCircleIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>);
 const PhotoIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 017.5 0z" /></svg>);
-const ChatBubbleIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.76 9.76 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.455.09-.91.09-1.365 0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" /></svg>);
+const ChatBubbleIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 017.5 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 017.5 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 017.5 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.76 9.76 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.455.09-.91.09-1.365 0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" /></svg>);
 const SpinnerIcon: React.FC<{className?: string}> = ({className}) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" className={className}><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>);
 const CameraIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.776 48.776 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" /><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" /></svg>);
 const SunIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" /></svg>);
@@ -83,16 +84,16 @@ const WhatsAppChatViewer: React.FC<WhatsAppChatViewerProps> = ({ chat, ownerName
     const [showAvatars, setShowAvatars] = useState(true);
     const [activeTab, setActiveTab] = useState<'messages' | 'media'>('messages');
     const [scrollToMessageId, setScrollToMessageId] = useState<string | null>(null);
-    const [jumpTarget, setJumpTarget] = useState<{ messageId: string; index: number } | null>(null);
     const [customAvatars, setCustomAvatars] = useState<Record<string, string>>({});
     const [chatTheme, setChatTheme] = useState<string>('default');
     const [chatBackground, setChatBackground] = useState<string | null>(null);
     const [rightAlignedUser, setRightAlignedUser] = useState<string>(ownerName);
     const [isCalendarOpen, setIsCalendarOpen] = useState(false);
     
-    const [displayedMessageCount, setDisplayedMessageCount] = useState(MESSAGES_PER_PAGE);
+    const [messageSlice, setMessageSlice] = useState({ start: 0, end: 0 });
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const topSentinelRef = useRef<HTMLDivElement>(null);
+    const bottomSentinelRef = useRef<HTMLDivElement>(null);
     const avatarInputRef = useRef<HTMLInputElement>(null);
     const backgroundInputRef = useRef<HTMLInputElement>(null);
     const userForAvatarChange = useRef<string | null>(null);
@@ -101,57 +102,59 @@ const WhatsAppChatViewer: React.FC<WhatsAppChatViewerProps> = ({ chat, ownerName
     const isSearching = useMemo(() => debouncedSearchQuery.trim().length > 0, [debouncedSearchQuery]);
     const isGroupChat = useMemo(() => chat.participants.length > 1, [chat.participants]);
     
+    useEffect(() => {
+        if (chat?.messages.length) {
+            setMessageSlice({
+                start: Math.max(0, chat.messages.length - MESSAGES_PER_PAGE),
+                end: chat.messages.length,
+            });
+            scrollState.current.shouldScrollToBottom = true;
+        }
+    }, [chat]);
+
     const activeDays = useMemo(() => { const days = new Set<string>(); chat.messages.forEach(msg => { const date = new Date(msg.timestamp_ms); days.add(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`); }); return days; }, [chat.messages]);
     const searchResults = useMemo(() => { if (!isSearching) return []; const lowercasedQuery = debouncedSearchQuery.toLowerCase(); return chat.messages.filter(msg => msg.type === 'message' && msg.content && msg.content.toLowerCase().includes(lowercasedQuery)); }, [isSearching, debouncedSearchQuery, chat.messages]);
-    const { hasMoreMessages, messageGroups } = useMemo(() => { const sourceMessages = chat.messages; const messagesToDisplay = sourceMessages.slice(Math.max(0, sourceMessages.length - displayedMessageCount)); const hasMore = displayedMessageCount < sourceMessages.length; const groups: Message[][] = []; if (messagesToDisplay.length > 0) { let currentGroup: Message[] = [messagesToDisplay[0]]; for (let i = 1; i < messagesToDisplay.length; i++) { const newDate = new Date(messagesToDisplay[i].timestamp_ms).toDateString() !== new Date(messagesToDisplay[i-1].timestamp_ms).toDateString(); if (!newDate) { currentGroup.push(messagesToDisplay[i]); } else { groups.push(currentGroup); currentGroup = [messagesToDisplay[i]]; } } groups.push(currentGroup); } return { hasMoreMessages: hasMore, messageGroups: groups }; }, [chat.messages, displayedMessageCount]);
+    
+    const hasOlderMessages = useMemo(() => messageSlice.start > 0, [messageSlice.start]);
+    const hasNewerMessages = useMemo(() => messageSlice.end < chat.messages.length, [messageSlice.end, chat.messages.length]);
+
+    const { messageGroups } = useMemo(() => { 
+        const messagesToDisplay = chat.messages.slice(messageSlice.start, messageSlice.end);
+        const groups: Message[][] = []; 
+        if (messagesToDisplay.length > 0) { 
+            let currentGroup: Message[] = [messagesToDisplay[0]]; 
+            for (let i = 1; i < messagesToDisplay.length; i++) { 
+                const newDate = new Date(messagesToDisplay[i].timestamp_ms).toDateString() !== new Date(messagesToDisplay[i-1].timestamp_ms).toDateString(); 
+                if (!newDate) { 
+                    currentGroup.push(messagesToDisplay[i]); 
+                } else { 
+                    groups.push(currentGroup); currentGroup = [messagesToDisplay[i]]; 
+                } 
+            } 
+            groups.push(currentGroup); 
+        } 
+        return { messageGroups: groups }; 
+    }, [chat.messages, messageSlice]);
     
     useEffect(() => { const styleId = 'whatsapp-viewer-animations'; if (document.getElementById(styleId)) return; const style = document.createElement('style'); style.id = styleId; style.innerHTML = `@keyframes loading-bar { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } } @keyframes highlight-animation { 0% { background-color: rgba(22, 163, 74, 0.3); } 100% { background-color: transparent; } } .highlight-message > div { animation: highlight-animation 2.5s ease-out; }`; document.head.appendChild(style); }, []);
     
-    // Effect to handle the loading part of a date jump
-    useEffect(() => {
-        if (!jumpTarget) return;
-
-        const totalMessages = chat.messages.length;
-        const buffer = Math.round(MESSAGES_PER_PAGE / 2);
-        const requiredCount = totalMessages - Math.max(0, jumpTarget.index - buffer);
-        
-        if (requiredCount > displayedMessageCount) {
-            setDisplayedMessageCount(Math.min(totalMessages, requiredCount));
-        } else {
-            setScrollToMessageId(jumpTarget.messageId);
-            setJumpTarget(null);
-        }
-    }, [jumpTarget, displayedMessageCount, chat.messages.length]);
-
     useLayoutEffect(() => {
-        if (!scrollContainerRef.current) return;
-        
-        if (jumpTarget) {
-            // We are in the process of jumping, let the jumpTarget effect handle scrolling
-            const targetMessageIsInDom = document.getElementById(`message-${jumpTarget.messageId}`);
-            if (targetMessageIsInDom) {
-                 // The message is rendered, now we can trigger the scroll
-                setScrollToMessageId(jumpTarget.messageId);
-                setJumpTarget(null);
-            }
-            return;
-        }
+        const container = scrollContainerRef.current;
+        if (!container) return;
         
         if (scrollState.current.isRestoring) {
-            scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight - scrollState.current.oldScrollHeight;
+            container.scrollTop = container.scrollHeight - scrollState.current.oldScrollHeight;
             scrollState.current.isRestoring = false;
         } else if (scrollState.current.shouldScrollToBottom) {
-            scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+            container.scrollTop = container.scrollHeight;
             scrollState.current.shouldScrollToBottom = false;
         }
 
         if (isLoading) {
             setIsLoading(false);
         }
+    }, [messageGroups]);
 
-    }, [messageGroups, jumpTarget]);
-
-    // Effect to handle the scrolling part of a date jump
     useLayoutEffect(() => {
         if (!scrollToMessageId) return;
         const element = document.getElementById(`message-${scrollToMessageId}`);
@@ -168,35 +171,73 @@ const WhatsAppChatViewer: React.FC<WhatsAppChatViewerProps> = ({ chat, ownerName
 
             return () => clearTimeout(timer);
         } else {
-            // Fallback if element not found
             setScrollToMessageId(null);
             setIsJumpingToDate(false);
         }
     }, [scrollToMessageId]);
 
-    const loadMoreMessages = useCallback(() => { if (isLoading || !hasMoreMessages || isJumpingToDate) return; setIsLoading(true); const container = scrollContainerRef.current; if (!container) { setIsLoading(false); return; } scrollState.current = { isRestoring: true, oldScrollHeight: container.scrollHeight, shouldScrollToBottom: false }; setTimeout(() => { setDisplayedMessageCount(prev => Math.min(chat.messages.length, prev + MESSAGES_PER_PAGE)); }, 100)}, [isLoading, hasMoreMessages, chat.messages.length, isJumpingToDate]);
+    const loadOlderMessages = useCallback(() => { if (isLoading || !hasOlderMessages || isJumpingToDate) return; setIsLoading(true); const container = scrollContainerRef.current; if (!container) { setIsLoading(false); return; } scrollState.current = { isRestoring: true, oldScrollHeight: container.scrollHeight, shouldScrollToBottom: false }; setTimeout(() => { setMessageSlice(prev => ({ ...prev, start: Math.max(0, prev.start - MESSAGES_PER_PAGE)})); }, 100)}, [isLoading, hasOlderMessages, isJumpingToDate]);
     
+    const loadNewerMessages = useCallback(() => {
+        if (isLoading || !hasNewerMessages || isJumpingToDate) return;
+        setIsLoading(true);
+        scrollState.current.isRestoring = false; // Don't adjust scroll when adding to bottom
+        setTimeout(() => {
+            setMessageSlice(prev => ({
+                ...prev,
+                end: Math.min(chat.messages.length, prev.end + MESSAGES_PER_PAGE)
+            }));
+        }, 100);
+    }, [isLoading, hasNewerMessages, isJumpingToDate, chat.messages.length]);
+
     useEffect(() => {
         const observer = new IntersectionObserver(
             (entries) => {
                 if (entries[0].isIntersecting) {
-                    loadMoreMessages();
+                    loadOlderMessages();
                 }
             },
-            { root: scrollContainerRef.current, threshold: 0.1, rootMargin: '1200px' }
+            { root: scrollContainerRef.current, threshold: 0.1 }
         );
         const sentinel = topSentinelRef.current;
-        if (sentinel && hasMoreMessages) { observer.observe(sentinel); }
+        if (sentinel && hasOlderMessages) { observer.observe(sentinel); }
         return () => { if (sentinel) observer.unobserve(sentinel); };
-    }, [loadMoreMessages, hasMoreMessages]);
+    }, [loadOlderMessages, hasOlderMessages]);
+
+    useEffect(() => {
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries[0].isIntersecting) {
+                    loadNewerMessages();
+                }
+            },
+            { root: scrollContainerRef.current, threshold: 0.1 }
+        );
+        const sentinel = bottomSentinelRef.current;
+        if (sentinel && hasNewerMessages) {
+            observer.observe(sentinel);
+        }
+        return () => { if (sentinel) observer.unobserve(sentinel); };
+    }, [loadNewerMessages, hasNewerMessages]);
 
     const handleAvatarChangeClick = (userName: string) => { userForAvatarChange.current = userName; avatarInputRef.current?.click(); };
     const handleAvatarFileSelected = (event: React.ChangeEvent<HTMLInputElement>) => { const file = event.target.files?.[0]; const userName = userForAvatarChange.current; if (!file || !userName) return; const reader = new FileReader(); reader.onload = (e) => { const dataUrl = e.target?.result as string; if (dataUrl) setCustomAvatars(prev => ({...prev, [userName]: dataUrl})); }; reader.readAsDataURL(file); if(event.target) event.target.value = '';};
     const handleBackgroundChangeClick = () => { backgroundInputRef.current?.click(); };
     const handleBackgroundFileSelected = (event: React.ChangeEvent<HTMLInputElement>) => { const file = event.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = (e) => { const dataUrl = e.target?.result as string; if (dataUrl) setChatBackground(dataUrl); }; reader.readAsDataURL(file); if (event.target) event.target.value = ''; };
     
-    const handleDateSelect = (date: Date) => {
+    const jumpToMessageByIndex = (targetIndex: number, messageId: string) => {
         setIsJumpingToDate(true);
+        scrollState.current.shouldScrollToBottom = false;
+
+        const newStart = Math.max(0, targetIndex);
+        const newEnd = Math.min(chat.messages.length, newStart + MESSAGES_PER_PAGE);
+
+        setMessageSlice({ start: newStart, end: newEnd });
+        
+        setTimeout(() => setScrollToMessageId(messageId), 0);
+    };
+
+    const handleDateSelect = (date: Date) => {
         const targetTimestamp = new Date(date.setHours(0, 0, 0, 0)).getTime();
         
         let firstMessageIndex = -1;
@@ -210,33 +251,26 @@ const WhatsAppChatViewer: React.FC<WhatsAppChatViewerProps> = ({ chat, ownerName
         
         if (firstMessageIndex !== -1) {
             const message = chat.messages[firstMessageIndex];
-            setJumpTarget({ messageId: message.id, index: firstMessageIndex });
-        } else {
-            if(chat.messages.length > 0){
-                const lastMessage = chat.messages[chat.messages.length - 1];
-                setJumpTarget({ messageId: lastMessage.id, index: chat.messages.length - 1 });
-            } else {
-                setIsJumpingToDate(false);
-            }
+            jumpToMessageByIndex(firstMessageIndex, message.id);
+        } else if (chat.messages.length > 0) {
+            const lastMessage = chat.messages[chat.messages.length - 1];
+            jumpToMessageByIndex(chat.messages.length - 1, lastMessage.id);
         }
     };
     
     const handleJumpToMedia = useCallback((item: MediaItem) => {
         const messageIndex = chat.messages.findIndex(m => m.id === item.messageId);
         if (messageIndex === -1) return;
-
-        setIsJumpingToDate(true);
         setActiveTab('messages');
-        setJumpTarget({ messageId: item.messageId, index: messageIndex });
+        jumpToMessageByIndex(messageIndex, item.messageId);
     }, [chat.messages]);
 
     const handleJumpFromSearch = (messageId: string) => {
         const messageIndex = chat.messages.findIndex(m => m.id === messageId);
         if (messageIndex === -1) return;
         
-        setIsJumpingToDate(true);
         setSearchQuery('');
-        setJumpTarget({ messageId: messageId, index: messageIndex });
+        jumpToMessageByIndex(messageIndex, messageId);
     };
     
     const messageContainerStyle = chatBackground ? { backgroundImage: `url(${chatBackground})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {};
@@ -256,9 +290,11 @@ const WhatsAppChatViewer: React.FC<WhatsAppChatViewerProps> = ({ chat, ownerName
                 <div className={`w-full h-full transition-opacity duration-300 ${activeTab === 'messages' ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                     <div ref={scrollContainerRef} className={`h-full p-4 md:p-6 overflow-y-auto ${messageContainerClasses}`} style={messageContainerStyle}>
                         <div className="flex flex-col gap-4 max-w-4xl mx-auto">
-                            {hasMoreMessages && (<div ref={topSentinelRef} className="h-1"></div>)}
+                            {hasOlderMessages && (<div ref={topSentinelRef} className="h-1"></div>)}
                             
                             {messageGroups.map((group, groupIndex) => { const firstMessage = group[0]; if (!firstMessage) return null; const dateStr = formatDateSeparator(firstMessage.timestamp_ms); return (<React.Fragment key={`${firstMessage.timestamp_ms}-${groupIndex}`}><div className="flex justify-center my-4 sticky top-2 z-10"><span className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm text-slate-600 dark:text-slate-300 text-xs font-semibold px-3 py-1 rounded-full shadow-sm">{dateStr}</span></div><div className="flex flex-col gap-1">{group.map((message, messageIndex) => { if (message.type === 'system') return <SystemMessageBubble key={message.id} message={message} />; const prevMessage = messageIndex > 0 ? group[messageIndex - 1] : null; const showSender = isGroupChat && (!prevMessage || prevMessage.sender_name !== message.sender_name); return (<MessageBubble key={message.id} message={message} isOwnMessage={message.sender_name === rightAlignedUser} showSender={showSender} searchQuery={isSearching ? debouncedSearchQuery : undefined} theme={chatTheme} createBlobUrl={createBlobUrl} />) })}</div></React.Fragment>);})}
+
+                            {hasNewerMessages && (<div ref={bottomSentinelRef} className="h-1"></div>)}
                         </div>
                     </div>
                 </div>
