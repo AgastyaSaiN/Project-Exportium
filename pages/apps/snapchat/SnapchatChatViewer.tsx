@@ -11,7 +11,7 @@ const XCircleIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xm
 const CameraIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.776 48.776 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" /><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" /></svg>);
 const ArrowLeftIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" /></svg>);
 const SpinnerIcon: React.FC<{className?: string}> = ({className}) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" className={className}><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>);
-const PhotoIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg>);
+const PhotoIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 017.5 0z" /></svg>);
 
 
 // --- Helper Functions ---
@@ -30,17 +30,19 @@ const getPlaceholderForMessage = (message: Message): {text: string, style: strin
     const type = message.media_type || 'TEXT';
 
     switch (type) {
-        case 'MEDIA': return { text: 'Snap (Media not found)', style: `${baseStyle} text-blue-400` };
-        case 'VIDEO': return { text: 'Video Snap (Media not found)', style: `${baseStyle} text-red-400` };
+        // Ephemeral Types (Normal behavior is missing)
+        case 'SNAP': return { text: 'Snap (Ephemeral)', style: `${baseStyle} text-blue-400` };
+        case 'VIDEO': return { text: 'Video Snap (Ephemeral)', style: `${baseStyle} text-red-400` };
+        
+        // Saved/Linkable Types (Should be present)
+        case 'MEDIA': return { text: 'Media (Not found)', style: `${baseStyle} text-yellow-400` };
+        case 'NOTE': return { text: 'Video Note', style: `${baseStyle} text-teal-400` };
         case 'AUDIO': return { text: 'Audio Note', style: `${baseStyle} text-purple-400` };
-        case 'NOTE': return { text: 'Video Note (Media not found)', style: `${baseStyle} text-teal-400` };
         case 'STICKER': return { text: 'Sticker', style: `${baseStyle} text-yellow-400` };
         case 'STATUS': return { text: 'Status Update', style: `${baseStyle} text-green-400` };
-        case 'STATUSSAVETOCAMERAROLL': return { text: 'Saved a Status', style: `${baseStyle} text-green-400` };
         case 'SAVED_CHAT_MEDIA': return { text: 'Saved Media (Not Found)', style: `${baseStyle} text-indigo-400` };
         case 'SCREENSHOT': return { text: 'Screenshot', style: `${baseStyle} text-orange-400` };
-        case 'SNAP': return { text: 'Snap (Media not found)', style: `${baseStyle} text-blue-400` };
-        case 'IMAGE': return { text: 'Image (Media not found)', style: `${baseStyle} text-blue-400` };
+        case 'IMAGE': return { text: 'Image (Not found)', style: `${baseStyle} text-blue-400` };
         case 'TEXT': return { text: '', style: 'text-slate-200' };
         default: 
             let f = type;
@@ -56,11 +58,11 @@ const getPlaceholderForMessage = (message: Message): {text: string, style: strin
 const MessageBubble: React.FC<{ message: Message; isOwnMessage: boolean; searchQuery?: string; className?: string; }> = ({ message, isOwnMessage, searchQuery, className }) => {
     const hasContent = message.content && message.content.trim().length > 0;
     const hasMedia = !!message.linkedMedia;
-    const bubbleColor = isOwnMessage ? `bg-slate-700` : 'bg-slate-800';
+    const bubbleColor = isOwnMessage ? `bg-slate-700 border border-slate-600` : 'bg-slate-800 border border-slate-700';
 
     if (!hasContent && !hasMedia) {
         const { text, style } = getPlaceholderForMessage(message);
-        if (!text) return null; // Don't render empty bubbles if no text and no media type text
+        if (!text) return null; 
         return (
             <div id={`message-${message.id}`} className={`group relative flex flex-col max-w-lg shadow-sm rounded-lg px-3 py-1.5 ${bubbleColor} ${isOwnMessage ? 'self-end' : 'self-start'} ${className ?? ''}`}>
                 <p className={`whitespace-pre-wrap leading-relaxed ${style}`}><HighlightedText text={text} highlight={searchQuery || ''} /></p>
