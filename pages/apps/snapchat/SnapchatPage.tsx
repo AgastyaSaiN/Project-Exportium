@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import JSZip from 'jszip';
@@ -32,6 +33,18 @@ const ExclamationTriangleIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props)
     </svg>
 );
 
+const CheckCircleIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+);
+
+const XCircleIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+         <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+);
+
 
 // --- Component ---
 
@@ -39,16 +52,88 @@ interface SnapchatPageProps {
     platform: Platform;
 }
 
-const parseSnapchatTimestamp = (ts: string): number => new Date(ts.replace(' UTC', 'Z')).getTime();
+interface ImportReport {
+    totalChats: number;
+    totalMessages: number;
+    mediaCount: number;
+    stickersCount: number;
+    linkedMediaCount: number;
+    mediaMessageCount: number;
+    missingFiles: string[];
+    fileSize: string;
+}
+
+// Recursively search for a file in the ZIP
+const findFileInZip = (zip: JSZip, fileName: string): JSZip.JSZipObject | null => {
+    // Direct check first
+    if (zip.file(fileName)) return zip.file(fileName);
+    if (zip.file(`json/${fileName}`)) return zip.file(`json/${fileName}`);
+    if (zip.file(`html/${fileName}`)) return zip.file(`html/${fileName}`);
+
+    // Regex search (slower but thorough)
+    const regex = new RegExp(`(^|/)${fileName}$`, 'i');
+    const files = zip.file(regex);
+    return files.length > 0 ? files[0] : null;
+};
+
+const parseSnapchatTimestamp = (ts: any): number => {
+    if (!ts) return 0;
+    if (typeof ts === 'number') return ts;
+    if (typeof ts !== 'string') return 0;
+    
+    try {
+        let str = ts.trim();
+        // Fix common formats like "2023-10-27 12:00:00 UTC"
+        if (str.endsWith(' UTC')) {
+            str = str.slice(0, -4).replace(' ', 'T') + 'Z';
+        } else {
+             // Standardize separator
+             str = str.replace(' ', 'T');
+             // If no timezone info and looks like date-time, assume UTC to match most exports
+             if (!str.endsWith('Z') && !/[+-]\d{2}:?\d{2}$/.test(str) && str.length > 10) {
+                 str += 'Z';
+             }
+        }
+        
+        const d = new Date(str);
+        const time = d.getTime();
+        return isNaN(time) ? 0 : time;
+    } catch (e) {
+        return 0;
+    }
+};
+
+const extractDateFromFilename = (filename: string): number | undefined => {
+    // Match patterns like "2023-10-27-12-00-00" or "2023-10-27_12-00-00"
+    // Common in chat_media and memories
+    const match = filename.match(/(\d{4}-\d{2}-\d{2})[_-](\d{2}-\d{2}-\d{2})/);
+    if (match) {
+        const datePart = match[1];
+        const timePart = match[2].replace(/-/g, ':');
+        const isoString = `${datePart}T${timePart}Z`; // Assume UTC for filenames
+        const ts = new Date(isoString).getTime();
+        if (!isNaN(ts)) return ts;
+    }
+    
+    // Try just date
+    const dateMatch = filename.match(/(\d{4}-\d{2}-\d{2})/);
+    if (dateMatch) {
+        const ts = new Date(dateMatch[1]).getTime();
+        if (!isNaN(ts)) return ts;
+    }
+
+    return undefined;
+};
 
 const SnapchatPage: React.FC<SnapchatPageProps> = ({ platform }) => {
     const { name, icon: Icon, color } = platform;
-    const [status, setStatus] = useState<'idle' | 'processing' | 'error'>('idle');
+    const [status, setStatus] = useState<'idle' | 'processing' | 'summary' | 'viewing' | 'error'>('idle');
     const [processingStep, setProcessingStep] = useState('');
     const [errorMessage, setErrorMessage] = useState<string>('');
     const [chats, setChats] = useState<Chat[]>([]);
     const [stickers, setStickers] = useState<SnapchatMedia[]>([]);
     const [ownerName, setOwnerName] = useState<string>('');
+    const [importReport, setImportReport] = useState<ImportReport | null>(null);
     const [theme, setTheme] = useState<'light' | 'dark'>('dark');
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -73,68 +158,119 @@ const SnapchatPage: React.FC<SnapchatPageProps> = ({ platform }) => {
         setChats([]);
         setStickers([]);
         setOwnerName('');
+        setImportReport(null);
 
         try {
             setProcessingStep('Loading ZIP file...');
             const zip = await JSZip.loadAsync(file);
+            
+            // --- File Discovery ---
+            // Use deep search instead of hardcoded paths
+            const chatHistoryFile = findFileInZip(zip, 'chat_history.json');
+            const memoriesHistoryFile = findFileInZip(zip, 'memories_history.json');
+            
+            const missingFiles: string[] = [];
+            if (!chatHistoryFile) missingFiles.push('chat_history.json');
+            if (!memoriesHistoryFile) missingFiles.push('memories_history.json');
 
+            // --- User Identification ---
             setProcessingStep('Identifying user...');
             let determinedOwnerName: string | null = null;
-            const userProfilePaths = ['json/user_profile.json', 'json/account.json', 'json/login_history.json'];
-            for(const path of userProfilePaths) {
-                const file = zip.file(path);
+            
+            const userProfileFiles = ['user_profile.json', 'account.json', 'login_history.json'];
+            
+            for(const fileName of userProfileFiles) {
+                const file = findFileInZip(zip, fileName);
                 if (file) {
                     try {
                         const content = await file.async('string');
                         const data = JSON.parse(content);
-                        if(path.includes('user_profile')) determinedOwnerName = data.username;
-                        if(path.includes('account')) determinedOwnerName = (Array.isArray(data) ? data[0] : data)?.Username;
-                        if(path.includes('login_history')) determinedOwnerName = data['Login History']?.find((e: any) => e.Username)?.Username;
+                        
+                        // user_profile.json structure
+                        if (data.username) determinedOwnerName = data.username;
+                        if (data['Profile'] && data['Profile']['Username']) determinedOwnerName = data['Profile']['Username'];
+
+                        // account.json structure
+                        if (!determinedOwnerName && data['Basic Information']?.Username) determinedOwnerName = data['Basic Information'].Username;
+                        if (!determinedOwnerName && Array.isArray(data) && data[0]?.Username) determinedOwnerName = data[0].Username;
+                        
+                        // login_history.json
+                        if (!determinedOwnerName && data['Login History'] && Array.isArray(data['Login History'])) {
+                             const entry = data['Login History'].find((e: any) => e.Username);
+                             if(entry) determinedOwnerName = entry.Username;
+                        }
                         if(determinedOwnerName) break;
-                    } catch(e) { console.warn(`Could not parse ${path}`, e); }
+                    } catch(e) { console.warn(`Could not parse ${fileName}`, e); }
                 }
             }
+            
+            // Fallback to "You" if we really can't find it, but this usually causes alignment issues
+            // so we try hard to find a sender in the chat history later if this fails.
             determinedOwnerName = determinedOwnerName || "You";
             setOwnerName(determinedOwnerName);
             
+            // --- Media Scanning ---
             setProcessingStep('Discovering media files...');
             const allMediaMap = new Map<string, SnapchatMedia>();
-            const mediaFolders = ['memories', 'chat_media'];
-            const mediaScanPromises: Promise<void>[] = [];
-
-            mediaFolders.forEach(folderName => {
-                zip.folder(folderName)?.forEach((relativePath, file) => {
-                    if (!file.dir && /\.(jpg|jpeg|png|mp4|mov)$/i.test(relativePath)) {
-                        const promise = async () => {
-                            try {
-                                const blob = await file.async('blob');
-                                const fullPath = `${folderName}/${relativePath}`;
-                                allMediaMap.set(fullPath, {
-                                    type: /\.(mp4|mov)$/i.test(relativePath) ? 'video' : 'image',
-                                    path: fullPath,
-                                    blobUrl: URL.createObjectURL(blob),
-                                });
-                            } catch (e) {
-                                console.error(`Failed to process media file: ${relativePath}`, e);
-                            }
-                        };
-                        mediaScanPromises.push(promise());
-                    }
-                });
-            });
-            await Promise.all(mediaScanPromises);
             
-            const memoriesHistoryFile = zip.file('json/memories_history.json');
+            // Scan everything that looks like a media folder
+            const mediaScanPromises: Promise<void>[] = [];
+            
+            zip.forEach((relativePath, file) => {
+                // Heuristic: Snapchat media is usually in top-level folders or one level deep
+                // specifically 'chat_media', 'memories', 'sc_media', 'shared_story'
+                const isMediaFile = !file.dir && /\.(jpg|jpeg|png|mp4|mov|webp)$/i.test(relativePath) && !relativePath.includes('stickers/');
+                
+                if (isMediaFile) {
+                    const promise = async () => {
+                        try {
+                            // Extract date from filename if possible (Crucial for linking!)
+                            const fileName = relativePath.split('/').pop() || relativePath;
+                            const dateFromFilename = extractDateFromFilename(fileName);
+
+                            const blob = await file.async('blob');
+                            const mediaItem: SnapchatMedia = {
+                                type: /\.(mp4|mov)$/i.test(relativePath) ? 'video' : 'image',
+                                path: relativePath,
+                                blobUrl: URL.createObjectURL(blob),
+                                date: dateFromFilename
+                            };
+                            
+                            // Store by full path
+                            allMediaMap.set(relativePath, mediaItem);
+                            
+                            // Store by filename (for loose matching)
+                            if (!allMediaMap.has(fileName)) {
+                                allMediaMap.set(fileName, mediaItem);
+                            }
+                        } catch (e) {
+                            console.error(`Failed to process media file: ${relativePath}`, e);
+                        }
+                    };
+                    mediaScanPromises.push(promise());
+                }
+            });
+            
+            await Promise.all(mediaScanPromises);
+
+            // --- Memories History Processing ---
+            // If we have memories history, use it to attribute precise dates to files that might not have them in filename
             if(memoriesHistoryFile) {
                 try {
                     const content = await memoriesHistoryFile.async('string');
                     const data = JSON.parse(content);
-                    if(data["Saved Media"]) {
-                        data["Saved Media"].forEach((item: any) => {
-                           const mediaPath = item["Media ID"];
-                           if(mediaPath && allMediaMap.has(mediaPath)) {
-                              const mediaItem = allMediaMap.get(mediaPath)!;
-                              mediaItem.date = parseSnapchatTimestamp(item.Date);
+                    const savedMedia = data["Saved Media"] || data["Received Saved Media"] || [];
+                    if(Array.isArray(savedMedia)) {
+                        savedMedia.forEach((item: any) => {
+                           const mediaId = item["Media ID"]; // Often just "Date.ext" or "hash.ext"
+                           const timestamp = parseSnapchatTimestamp(item.Date);
+                           
+                           if(mediaId && timestamp > 0) {
+                                // Try to update the media item if we found it during scan
+                                if(allMediaMap.has(mediaId)) {
+                                    const m = allMediaMap.get(mediaId)!;
+                                    m.date = timestamp; // Override filename date with metadata date (more accurate)
+                                }
                            }
                         });
                     }
@@ -143,86 +279,141 @@ const SnapchatPage: React.FC<SnapchatPageProps> = ({ platform }) => {
                 }
             }
 
+            // --- Chat History Parsing ---
             setProcessingStep('Parsing chat history...');
-            const chatHistoryFile = zip.file('json/chat_history.json');
-            if (!chatHistoryFile) throw new Error("Could not find 'json/chat_history.json'. This file is required to view conversations.");
+            if (!chatHistoryFile) throw new Error("Could not find 'chat_history.json'. This file is required.");
             const chatHistoryContent = await chatHistoryFile.async('string');
             const chatHistoryData = JSON.parse(chatHistoryContent);
 
             let allMessagesRaw: any[] = [];
-            const receivedKeys = ['Received Saved-in-Chat History', 'Received Chat History'];
-            const sentKeys = ['Sent Saved-in-Chat History', 'Sent Chat History'];
-            receivedKeys.forEach(key => { if (Array.isArray(chatHistoryData[key])) allMessagesRaw.push(...chatHistoryData[key].map((m: any) => ({ ...m, type: 'received' }))); });
-            sentKeys.forEach(key => { if (Array.isArray(chatHistoryData[key])) allMessagesRaw.push(...chatHistoryData[key].map((m: any) => ({ ...m, type: 'sent' }))); });
+            
+            // Normalized message extraction
+            const extractMessages = (list: any[], type: string) => {
+                if(!Array.isArray(list)) return;
+                list.forEach(m => {
+                    allMessagesRaw.push({ ...m, type });
+                });
+            };
+
+            extractMessages(chatHistoryData['Received Saved-in-Chat History'], 'received');
+            extractMessages(chatHistoryData['Received Chat History'], 'received');
+            extractMessages(chatHistoryData['Sent Saved-in-Chat History'], 'sent');
+            extractMessages(chatHistoryData['Sent Chat History'], 'sent');
+            
+            // Fallback for weird structures
             if (allMessagesRaw.length === 0) {
                  for (const key in chatHistoryData) {
-                    if (Object.prototype.hasOwnProperty.call(chatHistoryData, key) && Array.isArray(chatHistoryData[key])) {
-                        const p = chatHistoryData[key];
-                        if (p.length > 0 && p[0].Created && (p[0].From || p[0].To)) {
-                            p.forEach((msg: any) => allMessagesRaw.push({ ...msg, type: msg.To ? 'sent' : 'received' }));
-                        }
+                    if (Array.isArray(chatHistoryData[key])) {
+                        extractMessages(chatHistoryData[key], 'unknown');
                     }
                 }
             }
-            if (allMessagesRaw.length === 0) throw new Error("Could not find any saved chat messages in 'json/chat_history.json'. The file might be empty, or in a new, unrecognized format. Note: Snapchat only exports messages you've manually saved.");
+
+            if (allMessagesRaw.length === 0) throw new Error("No messages found in chat_history.json.");
             
             allMessagesRaw.sort((a, b) => parseSnapchatTimestamp(a.Created) - parseSnapchatTimestamp(b.Created));
 
             const conversations = new Map<string, Chat>();
-            const usedMediaPaths = new Set<string>();
-
+            
             for (const rawMsg of allMessagesRaw) {
-                const isSent = rawMsg.type === 'sent';
-                const otherUser = isSent ? rawMsg.To : rawMsg.From;
+                // Determine Sender
+                let sender = rawMsg.From;
+                let recipient = rawMsg.To;
+                
+                // Normalize: if 'From' matches owner, it's sent.
+                // If type is 'sent' and From is missing, assume From = owner.
+                if (!sender && rawMsg.type === 'sent') sender = determinedOwnerName;
+                if (!recipient && rawMsg.type === 'received') recipient = determinedOwnerName;
+                
+                if (!sender) sender = "Unknown"; // Should rarely happen
+
+                const isSent = sender === determinedOwnerName;
+                const otherUser = isSent ? (recipient || "Unknown") : sender;
+
+                // Group by conversation
                 if (!conversations.has(otherUser)) {
-                    conversations.set(otherUser, { id: otherUser, title: otherUser, participants: [{ name: determinedOwnerName }, { name: otherUser }], messages: [], lastActivity: 0 });
+                    conversations.set(otherUser, { 
+                        id: otherUser, 
+                        title: otherUser, 
+                        participants: [{ name: determinedOwnerName }, { name: otherUser }], 
+                        messages: [], 
+                        lastActivity: 0 
+                    });
                 }
+
                 const chat = conversations.get(otherUser)!;
                 const timestamp = parseSnapchatTimestamp(rawMsg.Created);
+                if (timestamp === 0) continue; // Skip bad data
+
+                const mediaType = rawMsg['Media Type'] || 'TEXT';
+                const content = rawMsg.Text || rawMsg.Content;
+
                 const message: Message = {
                     id: `${timestamp}-${chat.messages.length}`,
-                    sender_name: isSent ? determinedOwnerName : otherUser,
+                    sender_name: sender,
                     timestamp_ms: timestamp,
-                    media_type: rawMsg['Media Type'],
-                    content: rawMsg.Text || rawMsg.Content
+                    media_type: mediaType,
+                    content: content
                 };
-
-                const mediaPath = rawMsg.Media;
-                if (mediaPath && allMediaMap.has(mediaPath)) {
-                    const mediaItem = allMediaMap.get(mediaPath)!;
-                    message.linkedMedia = mediaItem;
-                    usedMediaPaths.add(mediaPath);
+                
+                // Attempt direct link if Media field exists (rare in recent exports)
+                const explicitMediaRef = rawMsg.Media;
+                if (explicitMediaRef && allMediaMap.has(explicitMediaRef)) {
+                    message.linkedMedia = allMediaMap.get(explicitMediaRef)!;
                 }
 
                 chat.messages.push(message);
                 chat.lastActivity = timestamp;
             }
 
+            // --- Media Linking (The Heuristic Step) ---
             setProcessingStep('Linking media to chats...');
-            const datedMediaForHeuristic = Array.from(allMediaMap.values())
+            
+            // Create a sorted array of all media that has a date attached
+            const datedMedia = Array.from(allMediaMap.values())
                 .filter(m => m.date !== undefined)
                 .sort((a, b) => a.date! - b.date!);
             
-            const TIME_THRESHOLD_MS = 15000;
+            // Linking Parameters
+            // 5 minutes window to account for upload delays, encoding time, or clock skew
+            const MATCH_WINDOW_MS = 5 * 60 * 1000; 
+
+            let linkedCount = 0;
 
             for (const chat of conversations.values()) {
                 for (const message of chat.messages) {
-                    if (!message.linkedMedia && ['MEDIA', 'VIDEO', 'NOTE'].includes(message.media_type)) {
-                        let bestMatch: SnapchatMedia | null = null;
-                        let smallestDiff = Infinity;
+                    // Only try to link if it's a media message and not already linked
+                    if (!message.linkedMedia && ['MEDIA', 'VIDEO', 'NOTE', 'SNAP', 'IMAGE'].includes(message.media_type)) {
                         
-                        for (const mediaItem of datedMediaForHeuristic) {
-                            if (usedMediaPaths.has(mediaItem.path)) continue;
-                            const diff = Math.abs(mediaItem.date! - message.timestamp_ms);
-                            if (diff < smallestDiff && diff < TIME_THRESHOLD_MS) {
-                                smallestDiff = diff;
-                                bestMatch = mediaItem;
+                        // Binary search or simple scan for closest media
+                        // Since lists are sorted, we can optimize, but linear local scan is fast enough for typical JS arrays
+                        let bestMatch: SnapchatMedia | null = null;
+                        let minDiff = Infinity;
+                        
+                        // Optimization: Find start index roughly? No, just filter relevant range first?
+                        // Let's iterate.
+                        for (const mediaItem of datedMedia) {
+                            if (!mediaItem.date) continue;
+                            
+                            const diff = Math.abs(mediaItem.date - message.timestamp_ms);
+                            
+                            // If we are way past the window, stop (since sorted)
+                            if (mediaItem.date > message.timestamp_ms + MATCH_WINDOW_MS) break;
+                            
+                            // If inside window
+                            if (diff < MATCH_WINDOW_MS) {
+                                if (diff < minDiff) {
+                                    minDiff = diff;
+                                    bestMatch = mediaItem;
+                                }
                             }
                         }
 
                         if (bestMatch) {
                             message.linkedMedia = bestMatch;
-                            usedMediaPaths.add(bestMatch.path);
+                            linkedCount++;
+                            // Optional: Remove from pool to prevent double linking? 
+                            // No, technically two messages could reference same media (e.g. shared story)
                         }
                     }
                 }
@@ -230,22 +421,49 @@ const SnapchatPage: React.FC<SnapchatPageProps> = ({ platform }) => {
             
             setChats(Array.from(conversations.values()).sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0)));
 
+            // --- Stickers ---
             const stickerPromises: Promise<SnapchatMedia | null>[] = [];
-            zip.folder('stickers')?.forEach((relativePath, file) => {
-                 if (!file.dir && /\.(png|webp|gif)$/i.test(relativePath)) {
-                    const promise = async (): Promise<SnapchatMedia | null> => {
+            // Search recursively for anything in a 'stickers' folder
+            zip.forEach((relativePath, file) => {
+                if (!file.dir && relativePath.includes('stickers/') && /\.(png|webp|gif)$/i.test(relativePath)) {
+                     const promise = async (): Promise<SnapchatMedia | null> => {
                         try {
                             const blob = await file.async('blob');
-                            return { type: 'sticker', path: `stickers/${relativePath}`, blobUrl: URL.createObjectURL(blob) };
+                            return { type: 'sticker', path: relativePath, blobUrl: URL.createObjectURL(blob) };
                         } catch (e) { return null; }
                     };
                     stickerPromises.push(promise());
-                 }
+                }
             });
+            
             const allStickers = (await Promise.all(stickerPromises)).filter((s): s is SnapchatMedia => s !== null);
             setStickers(allStickers);
 
-            setStatus('idle');
+            // --- Report Calculation ---
+            let totalMessages = 0;
+            let mediaMessageCount = 0; 
+            
+            Array.from(conversations.values()).forEach(c => {
+                totalMessages += c.messages.length;
+                c.messages.forEach(m => {
+                    if (['MEDIA', 'SNAP', 'VIDEO', 'IMAGE', 'NOTE'].includes(m.media_type)) {
+                        mediaMessageCount++;
+                    }
+                });
+            });
+
+            setImportReport({
+                totalChats: conversations.size,
+                totalMessages,
+                mediaCount: allMediaMap.size,
+                stickersCount: allStickers.length,
+                linkedMediaCount: linkedCount,
+                mediaMessageCount,
+                missingFiles,
+                fileSize: (file.size / (1024 * 1024)).toFixed(2) + ' MB'
+            });
+
+            setStatus('summary');
         
         } catch (error) {
             console.error("Failed to process Snapchat archive:", error);
@@ -256,14 +474,129 @@ const SnapchatPage: React.FC<SnapchatPageProps> = ({ platform }) => {
         }
     };
     
-
     const handleReset = () => {
         setStatus('idle');
         setErrorMessage('');
         setChats([]);
         setStickers([]);
         setOwnerName('');
+        setImportReport(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    const handleProceed = () => {
+        setStatus('viewing');
+    };
+
+    const renderSummaryView = () => {
+        if (!importReport) return null;
+        const isChatHistoryMissing = importReport.missingFiles.includes('chat_history.json');
+        const isMemoriesMissing = importReport.missingFiles.includes('memories_history.json');
+
+        return (
+            <div className="max-w-3xl w-full mx-auto bg-slate-800 rounded-2xl shadow-2xl p-8 border border-slate-700">
+                <div className="text-center mb-8">
+                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-yellow-400 mb-4">
+                        <CheckCircleIcon className="w-10 h-10 text-slate-900" />
+                    </div>
+                    <h2 className="text-3xl font-bold text-white">Analysis Complete</h2>
+                    <p className="text-slate-400 mt-2">We've scanned your archive. Here's what we found.</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                    <div className="bg-slate-900/50 rounded-xl p-5 border border-slate-700">
+                        <h3 className="text-sm uppercase tracking-wider text-slate-500 font-bold mb-4">Overview</h3>
+                        <div className="space-y-3">
+                             <div className="flex justify-between">
+                                <span className="text-slate-300">File Size</span>
+                                <span className="font-mono text-yellow-400">{importReport.fileSize}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-slate-300">Chats Found</span>
+                                <span className="font-mono text-yellow-400">{importReport.totalChats}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-slate-300">Total Messages</span>
+                                <span className="font-mono text-yellow-400">{importReport.totalMessages}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-slate-900/50 rounded-xl p-5 border border-slate-700">
+                        <h3 className="text-sm uppercase tracking-wider text-slate-500 font-bold mb-4">Media Health</h3>
+                        <div className="space-y-3">
+                            <div className="flex justify-between">
+                                <span className="text-slate-300">Media Files Found</span>
+                                <span className="font-mono text-yellow-400">{importReport.mediaCount}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-slate-300">Stickers Found</span>
+                                <span className="font-mono text-yellow-400">{importReport.stickersCount}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                                <span className="text-slate-300">Media Linking</span>
+                                <div className="text-right">
+                                    <span className={`font-mono font-bold ${importReport.linkedMediaCount > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                        {importReport.linkedMediaCount} / {importReport.mediaMessageCount}
+                                    </span>
+                                </div>
+                            </div>
+                            {importReport.mediaMessageCount > 0 && importReport.linkedMediaCount === 0 && (
+                                <p className="text-xs text-red-400 mt-1">
+                                    * No media could be linked. Ensure you requested "Memories" in your export.
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="mb-8">
+                    <h3 className="text-sm uppercase tracking-wider text-slate-500 font-bold mb-4">Your Identity</h3>
+                    <div className="bg-slate-900/50 rounded-xl p-5 border border-slate-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div>
+                            <p className="text-slate-300 text-sm">Detected Username</p>
+                            <p className="text-xs text-slate-500 mt-1">Used to align your messages to the right.</p>
+                        </div>
+                        <input 
+                            type="text" 
+                            value={ownerName} 
+                            onChange={(e) => setOwnerName(e.target.value)}
+                            className="bg-slate-800 border border-slate-600 text-white text-sm rounded-lg focus:ring-yellow-400 focus:border-yellow-400 block w-full sm:w-48 p-2.5"
+                        />
+                    </div>
+                </div>
+
+                {importReport.missingFiles.length > 0 && (
+                     <div className="bg-red-900/20 border border-red-900/50 rounded-xl p-4 mb-8">
+                        <div className="flex items-start">
+                            <XCircleIcon className="w-5 h-5 text-red-500 mt-0.5 mr-3 flex-shrink-0" />
+                            <div>
+                                <h4 className="text-red-400 font-bold text-sm">Missing Files Detected</h4>
+                                <ul className="mt-2 space-y-1">
+                                    {isChatHistoryMissing && <li className="text-red-300 text-sm">• <span className="font-mono">chat_history.json</span> not found in standard paths.</li>}
+                                    {isMemoriesMissing && <li className="text-red-300 text-sm">• <span className="font-mono">memories_history.json</span> not found. Media linking relies on filenames only.</li>}
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                    <button 
+                        onClick={handleReset}
+                        className="px-6 py-3 rounded-lg font-semibold text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+                    >
+                        Back to Upload
+                    </button>
+                    <button 
+                        onClick={handleProceed}
+                        className="px-8 py-3 rounded-lg font-bold text-slate-900 bg-yellow-400 hover:bg-yellow-500 transition-transform hover:scale-105 shadow-lg"
+                    >
+                        View Chats
+                    </button>
+                </div>
+            </div>
+        );
     };
 
     const renderUploadView = () => {
@@ -278,6 +611,8 @@ const SnapchatPage: React.FC<SnapchatPageProps> = ({ platform }) => {
                         </p>
                     </div>
                 );
+            case 'summary':
+                return renderSummaryView();
             case 'error':
                  return (
                     <div className="text-center">
@@ -321,7 +656,7 @@ const SnapchatPage: React.FC<SnapchatPageProps> = ({ platform }) => {
         }
     };
 
-    if (chats.length > 0) {
+    if (status === 'viewing' && chats.length > 0) {
         return (
              <SnapchatChatViewer 
                 chats={chats}
@@ -345,7 +680,7 @@ const SnapchatPage: React.FC<SnapchatPageProps> = ({ platform }) => {
             <div className="flex-grow flex items-center justify-center">
                 {renderUploadView()}
             </div>
-            {status !== 'processing' && (
+            {status !== 'processing' && status !== 'summary' && (
                  <div className="flex-shrink-0 py-6 text-center">
                     <Link
                         to="/"

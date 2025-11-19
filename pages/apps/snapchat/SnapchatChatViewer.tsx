@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useRef, useLayoutEffect } from 'react';
 import { Chat, Message, SnapchatMedia } from './types';
 import { Platform } from '../../../constants';
@@ -26,18 +27,29 @@ const LazyMedia: React.FC<{ item: SnapchatMedia, className?: string }> = ({ item
 
 const getPlaceholderForMessage = (message: Message): {text: string, style: string} => {
     const baseStyle = 'text-slate-400 italic';
-    switch (message.media_type) {
-        case 'MEDIA': return { text: 'Snap', style: `${baseStyle} text-blue-400` };
-        case 'VIDEO': return { text: 'Video Snap', style: `${baseStyle} text-red-400` };
+    const type = message.media_type || 'TEXT';
+
+    switch (type) {
+        case 'MEDIA': return { text: 'Snap (Media not found)', style: `${baseStyle} text-blue-400` };
+        case 'VIDEO': return { text: 'Video Snap (Media not found)', style: `${baseStyle} text-red-400` };
         case 'AUDIO': return { text: 'Audio Note', style: `${baseStyle} text-purple-400` };
-        case 'NOTE': return { text: 'Video Note', style: `${baseStyle} text-teal-400` };
+        case 'NOTE': return { text: 'Video Note (Media not found)', style: `${baseStyle} text-teal-400` };
         case 'STICKER': return { text: 'Sticker', style: `${baseStyle} text-yellow-400` };
         case 'STATUS': return { text: 'Status Update', style: `${baseStyle} text-green-400` };
         case 'STATUSSAVETOCAMERAROLL': return { text: 'Saved a Status', style: `${baseStyle} text-green-400` };
-        case 'SAVED_CHAT_MEDIA': return { text: 'Saved Media', style: `${baseStyle} text-indigo-400` };
+        case 'SAVED_CHAT_MEDIA': return { text: 'Saved Media (Not Found)', style: `${baseStyle} text-indigo-400` };
         case 'SCREENSHOT': return { text: 'Screenshot', style: `${baseStyle} text-orange-400` };
+        case 'SNAP': return { text: 'Snap (Media not found)', style: `${baseStyle} text-blue-400` };
+        case 'IMAGE': return { text: 'Image (Media not found)', style: `${baseStyle} text-blue-400` };
         case 'TEXT': return { text: '', style: 'text-slate-200' };
-        default:  let f = message.media_type.includes('_') ? message.media_type.toLowerCase().replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : (message.media_type.toLowerCase().charAt(0).toUpperCase() + message.media_type.toLowerCase().slice(1)); return { text: `[${f}]`, style: baseStyle };
+        default: 
+            let f = type;
+            try {
+                f = type.includes('_') ? type.toLowerCase().replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : (type.toLowerCase().charAt(0).toUpperCase() + type.toLowerCase().slice(1)); 
+            } catch (e) {
+                f = String(type);
+            }
+            return { text: `[${f}]`, style: baseStyle };
     }
 };
 
@@ -48,7 +60,7 @@ const MessageBubble: React.FC<{ message: Message; isOwnMessage: boolean; searchQ
 
     if (!hasContent && !hasMedia) {
         const { text, style } = getPlaceholderForMessage(message);
-        if (!text) return null; // Don't render empty bubbles
+        if (!text) return null; // Don't render empty bubbles if no text and no media type text
         return (
             <div id={`message-${message.id}`} className={`group relative flex flex-col max-w-lg shadow-sm rounded-lg px-3 py-1.5 ${bubbleColor} ${isOwnMessage ? 'self-end' : 'self-start'} ${className ?? ''}`}>
                 <p className={`whitespace-pre-wrap leading-relaxed ${style}`}><HighlightedText text={text} highlight={searchQuery || ''} /></p>
@@ -163,8 +175,19 @@ const SnapchatChatViewer: React.FC<SnapchatChatViewerProps> = ({ chats, stickers
     const avatarInputRef = useRef<HTMLInputElement>(null);
     const userForAvatarChange = useRef<string | null>(null);
 
+    // Update rightAlignedUser when ownerName prop changes (e.g. from Summary screen edit)
+    useEffect(() => {
+        setRightAlignedUser(ownerName);
+    }, [ownerName]);
+
     const selectedChat = useMemo(() => chats.find(c => c.id === selectedChatId), [selectedChatId, chats]);
     const isSearching = useMemo(() => searchQuery.trim().length > 0, [searchQuery]);
+    
+    // Case-insensitive comparison for ownership
+    const isOwner = (sender: string) => {
+        return sender.trim().toLowerCase() === rightAlignedUser.trim().toLowerCase();
+    };
+
     const { messageGroups, searchResultCount } = useMemo(() => { if(!selectedChat) return {messageGroups:[], searchResultCount: null}; const sourceMessages = selectedChat.messages; const filteredMessages = isSearching ? sourceMessages.filter(msg => (msg.content && msg.content.toLowerCase().includes(searchQuery.toLowerCase())) || (getPlaceholderForMessage(msg).text.toLowerCase().includes(searchQuery.toLowerCase()))) : sourceMessages; const resultCount = isSearching ? filteredMessages.length : null; const groups: Message[][] = []; if (filteredMessages.length > 0) { let currentGroup: Message[] = [filteredMessages[0]]; for (let i = 1; i < filteredMessages.length; i++) { const newDate = new Date(filteredMessages[i].timestamp_ms).toDateString() !== new Date(filteredMessages[i-1].timestamp_ms).toDateString(); if (!newDate) { currentGroup.push(filteredMessages[i]); } else { groups.push(currentGroup); currentGroup = [filteredMessages[i]]; } } groups.push(currentGroup); } return { messageGroups: groups, searchResultCount: resultCount }; }, [selectedChat, isSearching, searchQuery]);
     useLayoutEffect(() => { const container = scrollContainerRef.current; if(container) { container.scrollTop = container.scrollHeight; } }, [selectedChat, messageGroups]);
     
@@ -213,7 +236,7 @@ const SnapchatChatViewer: React.FC<SnapchatChatViewerProps> = ({ chats, stickers
                         <div className="flex-grow overflow-hidden relative">
                             <div className={`w-full h-full transition-opacity duration-300 ${activeTab === 'messages' ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                                 <div ref={scrollContainerRef} className="h-full p-4 md:p-6 overflow-y-auto bg-slate-900">
-                                    <div className="flex flex-col gap-4 max-w-4xl mx-auto">{isSearching && (<div className="text-center my-2 sticky top-2 z-10"><p className="text-sm text-slate-400 bg-slate-700/70 backdrop-blur-sm inline-block px-3 py-1 rounded-full">{searchResultCount === 0 ? 'No messages found.' : `Found ${searchResultCount} message${searchResultCount !== 1 ? 's' : ''}.`}</p></div>)}{messageGroups.map((group, groupIndex) => { const firstMessage = group[0]; if (!firstMessage) return null; const dateStr = formatDateSeparator(firstMessage.timestamp_ms); return (<React.Fragment key={`${firstMessage.timestamp_ms}-${groupIndex}`}><div className="flex justify-center my-4 sticky top-2 z-10"><span className="bg-slate-700 text-slate-300 text-xs font-semibold px-3 py-1 rounded-full shadow-sm">{dateStr}</span></div><div className="flex flex-col">{group.map((message, messageIndex) => { const prevMessage = messageIndex > 0 ? group[messageIndex - 1] : null; const senderHasChanged = !prevMessage || prevMessage.sender_name !== message.sender_name; const marginTopClass = senderHasChanged ? 'mt-3' : 'mt-0.5'; return (<MessageBubble key={message.id} message={message} isOwnMessage={message.sender_name === rightAlignedUser} searchQuery={isSearching ? searchQuery : undefined} className={marginTopClass}/>); })}</div></React.Fragment>);})}</div>
+                                    <div className="flex flex-col gap-4 max-w-4xl mx-auto">{isSearching && (<div className="text-center my-2 sticky top-2 z-10"><p className="text-sm text-slate-400 bg-slate-700/70 backdrop-blur-sm inline-block px-3 py-1 rounded-full">{searchResultCount === 0 ? 'No messages found.' : `Found ${searchResultCount} message${searchResultCount !== 1 ? 's' : ''}.`}</p></div>)}{messageGroups.map((group, groupIndex) => { const firstMessage = group[0]; if (!firstMessage) return null; const dateStr = formatDateSeparator(firstMessage.timestamp_ms); return (<React.Fragment key={`${firstMessage.timestamp_ms}-${groupIndex}`}><div className="flex justify-center my-4 sticky top-2 z-10"><span className="bg-slate-700 text-slate-300 text-xs font-semibold px-3 py-1 rounded-full shadow-sm">{dateStr}</span></div><div className="flex flex-col">{group.map((message, messageIndex) => { const prevMessage = messageIndex > 0 ? group[messageIndex - 1] : null; const senderHasChanged = !prevMessage || prevMessage.sender_name !== message.sender_name; const marginTopClass = senderHasChanged ? 'mt-3' : 'mt-0.5'; return (<MessageBubble key={message.id} message={message} isOwnMessage={isOwner(message.sender_name)} searchQuery={isSearching ? searchQuery : undefined} className={marginTopClass}/>); })}</div></React.Fragment>);})}</div>
                                 </div>
                             </div>
                              <div className={`absolute inset-0 transition-opacity duration-300 ${activeTab === 'media' ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}><MediaGallery chat={selectedChat} /></div>
