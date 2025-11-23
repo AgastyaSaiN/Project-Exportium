@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Link } from 'react-router-dom';
 
@@ -6,9 +7,10 @@ interface PlatformCardProps {
   slug: string;
   icon: React.FC<React.SVGProps<SVGSVGElement>>;
   color: string;
+  badge?: string;
 }
 
-const PlatformCard: React.FC<PlatformCardProps> = ({ name, slug, icon: Icon, color }) => {
+const PlatformCard: React.FC<PlatformCardProps> = ({ name, slug, icon: Icon, color, badge }) => {
   const colorMap: { [key: string]: string } = {
     'text-pink-500': 'shadow-pink-500/25',
     'text-green-500': 'shadow-green-500/25',
@@ -24,8 +26,13 @@ const PlatformCard: React.FC<PlatformCardProps> = ({ name, slug, icon: Icon, col
   return (
     <Link
       to={`/app/${slug}`}
-      className={`group flex flex-col items-center justify-center p-3.5 bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm rounded-2xl border border-slate-200/80 dark:border-slate-700/80 shadow-md hover:shadow-xl hover:-translate-y-1 transition-all duration-300 ease-in-out cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 hover:shadow-[-5px_10px_30px_0px] hover:${hoverShadow}`}
+      className={`relative group flex flex-col items-center justify-center p-3.5 bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm rounded-2xl border border-slate-200/80 dark:border-slate-700/80 shadow-md hover:shadow-xl hover:-translate-y-1 transition-all duration-300 ease-in-out cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 hover:shadow-[-5px_10px_30px_0px] hover:${hoverShadow}`}
     >
+      {badge && (
+        <span className="absolute -top-2 -right-2 bg-yellow-400 text-slate-900 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm z-10 border border-white dark:border-slate-800">
+            {badge}
+        </span>
+      )}
       <div className={`relative w-12 h-12 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700`}>
           <Icon className={`w-8 h-8 ${color} transition-colors duration-300`} />
       </div>

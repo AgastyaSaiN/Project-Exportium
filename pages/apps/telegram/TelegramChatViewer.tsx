@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
 import { Chat, Message, Photo, Video, TelegramText } from './types';
 
@@ -61,6 +62,45 @@ const renderTelegramText = (text: TelegramText, searchQuery: string) => {
 
 const MessageBubble: React.FC<{ message: Message; isOwnMessage: boolean; showSender: boolean; searchQuery?: string; createBlobUrl: (uri: string) => Promise<string | undefined>; }> = ({ message, isOwnMessage, showSender, searchQuery, createBlobUrl }) => { const bubbleColor = isOwnMessage ? `bg-sky-100 dark:bg-sky-800/60` : 'bg-white dark:bg-slate-700'; const senderColor = useMemo(() => { const name = message.from || ''; let hash = 0; for (let i = 0; i < name.length; i++) { hash = name.charCodeAt(i) + ((hash << 5) - hash); } const colors = ['text-red-500', 'text-blue-500', 'text-green-500', 'text-purple-500', 'text-orange-500', 'text-pink-500']; return colors[Math.abs(hash) % colors.length]; }, [message.from]); return (<div id={`message-${message.id}`} className={`group relative flex flex-col max-w-lg shadow-sm rounded-lg px-3 py-2 ${bubbleColor} ${isOwnMessage ? 'self-end' : 'self-start'}`}> {!isOwnMessage && showSender && (<p className={`text-sm font-bold mb-1 ${senderColor}`}>{message.from}</p>)} {message.photo && <LazyMedia uri={message.photo} createBlobUrl={createBlobUrl} isVideo={false} className="max-w-xs sm:max-w-sm max-h-80 rounded-lg" />} {message.video_file && <LazyMedia uri={message.video_file} createBlobUrl={createBlobUrl} isVideo={true} className="max-w-xs sm:max-w-sm max-h-80 rounded-lg" />} <div className={`whitespace-pre-wrap leading-relaxed text-slate-800 dark:text-slate-200 ${(message.photo || message.video_file) ? 'mt-2' : ''}`}>{renderTelegramText(message.text, searchQuery || '')}</div> <div className="self-end text-xs text-slate-400 dark:text-slate-500 mt-1">{formatTimestamp(new Date(message.date).getTime())}</div></div>);};
 
+const SettingsModal: React.FC<{ isOpen: boolean; onClose: () => void; currentParticipants: Set<{name: string, id: string}>; currentRightAlignedId: string; onRightAlignmentChange: (id: string) => void; }> = ({ isOpen, onClose, currentParticipants, currentRightAlignedId, onRightAlignmentChange }) => {
+    if (!isOpen) return null;
+
+    const participantsList = Array.from(currentParticipants);
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-30" onClick={onClose}>
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-6 w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200">Settings</h2>
+                    <button onClick={onClose} className="p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700"><CloseIcon className="w-6 h-6 text-slate-500 dark:text-slate-400" /></button>
+                </div>
+                
+                <div className="space-y-6">
+                    <div>
+                        <h3 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Who are you?</h3>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">Select yourself to align your messages to the right.</p>
+                        <div className="space-y-2 max-h-60 overflow-y-auto pr-2 border border-slate-200 dark:border-slate-700 rounded-lg p-2">
+                            {participantsList.map(p => (
+                                <div
+                                    key={p.id}
+                                    onClick={() => onRightAlignmentChange(p.id)}
+                                    className={`p-3 border rounded-lg cursor-pointer transition-all flex items-center gap-3 ${currentRightAlignedId === p.id ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20 ring-2 ring-sky-200 dark:border-sky-500' : 'border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500'}`}
+                                >
+                                    <UserAvatar name={p.name} className="w-8 h-8" />
+                                    <div className="flex-grow min-w-0">
+                                        <p className="font-semibold text-slate-800 dark:text-slate-200 truncate">{p.name}</p>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{p.id}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // --- Main Viewer Component ---
 interface TelegramChatViewerProps { chats: Chat[]; ownerId: string; createBlobUrl: (uri: string) => Promise<string | undefined>; theme: Theme; onThemeToggle: () => void; onReset: () => void; }
 const TelegramChatViewer: React.FC<TelegramChatViewerProps> = ({ chats, ownerId, createBlobUrl, theme, onThemeToggle, onReset }) => {
@@ -70,6 +110,14 @@ const TelegramChatViewer: React.FC<TelegramChatViewerProps> = ({ chats, ownerId,
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [customAvatars, setCustomAvatars] = useState<Record<string, string>>({});
     const [isSidebarVisible, setIsSidebarVisible] = useState(true);
+    
+    // Identity State
+    const [rightAlignedId, setRightAlignedId] = useState<string>(ownerId);
+    
+    // Update local alignment state if prop changes (e.g. re-upload)
+    useEffect(() => {
+        setRightAlignedId(ownerId);
+    }, [ownerId]);
 
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -87,6 +135,22 @@ const TelegramChatViewer: React.FC<TelegramChatViewerProps> = ({ chats, ownerId,
         );
     }, [chats, chatSearchQuery]);
 
+    // Extract unique participants for the settings modal from the current chat
+    const currentChatParticipants = useMemo(() => {
+        const participants = new Set<{name: string, id: string}>();
+        if (selectedChat) {
+            selectedChat.messages.forEach(msg => {
+                if (msg.from && msg.from_id) {
+                    participants.add({ name: msg.from, id: msg.from_id });
+                }
+            });
+        }
+        // Deduplicate by ID
+        const unique = new Map<string, {name: string, id: string}>();
+        participants.forEach(p => unique.set(p.id, p));
+        return new Set(unique.values());
+    }, [selectedChat]);
+
     const { messageGroups, searchResultCount } = useMemo(() => { if(!selectedChat) return {messageGroups:[], searchResultCount: null}; const sourceMessages = selectedChat.messages; const filteredMessages = isSearching ? sourceMessages.filter(msg => { const text = getMessagePreview(msg); return text && text.toLowerCase().includes(searchQuery.toLowerCase());}) : sourceMessages; const resultCount = isSearching ? filteredMessages.length : null; const groups: Message[][] = []; if (filteredMessages.length > 0) { let currentGroup: Message[] = [filteredMessages[0]]; for (let i = 1; i < filteredMessages.length; i++) { const newDate = new Date(filteredMessages[i].date).toDateString() !== new Date(filteredMessages[i-1].date).toDateString(); if (!newDate) { currentGroup.push(filteredMessages[i]); } else { groups.push(currentGroup); currentGroup = [filteredMessages[i]]; } } groups.push(currentGroup); } return { messageGroups: groups, searchResultCount: resultCount }; }, [selectedChat, isSearching, searchQuery]);
     useLayoutEffect(() => { const container = scrollContainerRef.current; if(container) { container.scrollTop = container.scrollHeight; } }, [selectedChat, messageGroups]);
     
@@ -99,6 +163,15 @@ const TelegramChatViewer: React.FC<TelegramChatViewerProps> = ({ chats, ownerId,
     return (
         <div className="flex w-full h-full bg-white dark:bg-slate-900 overflow-hidden relative">
             <input type="file" ref={avatarInputRef} className="hidden" accept="image/png, image/jpeg, image/gif" onChange={handleAvatarFileSelected}/>
+            
+            <SettingsModal 
+                isOpen={isSettingsOpen} 
+                onClose={() => setIsSettingsOpen(false)} 
+                currentParticipants={currentChatParticipants}
+                currentRightAlignedId={rightAlignedId}
+                onRightAlignmentChange={setRightAlignedId}
+            />
+
             <aside className={`absolute md:relative w-full md:w-1/3 lg:w-1/4 border-r border-slate-200 dark:border-slate-700 flex flex-col transition-transform duration-300 ease-in-out z-10 bg-white dark:bg-slate-800 h-full ${isSidebarVisible ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
                 <header className="p-4 border-b border-slate-200 dark:border-slate-700 space-y-3">
                     <div>
@@ -148,13 +221,14 @@ const TelegramChatViewer: React.FC<TelegramChatViewerProps> = ({ chats, ownerId,
                            <div className="flex-shrink-0 flex items-center gap-2">
                                <div className="relative"><span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none"><SearchIcon className="w-5 h-5 text-slate-400 dark:text-slate-500" /></span><input type="text" placeholder="Search..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full max-w-[120px] sm:max-w-[200px] rounded-full border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 py-1.5 pl-10 pr-8 text-sm text-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-all duration-300" />{isSearching && (<button onClick={() => setSearchQuery('')} className="absolute inset-y-0 right-0 flex items-center pr-2 group"><XCircleIcon className="w-5 h-5 text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300 transition-colors" /></button>)}</div>
                                <button onClick={onThemeToggle} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors" aria-label="Toggle theme">{theme === 'light' ? <MoonIcon className="w-6 h-6 text-slate-600" /> : <SunIcon className="w-6 h-6 text-yellow-400" />}</button>
+                               <button onClick={() => setIsSettingsOpen(true)} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors" aria-label="Chat settings"><SettingsIcon className="w-6 h-6 text-slate-600 dark:text-slate-300" /></button>
                                <button onClick={onReset} className="px-4 py-2 bg-sky-500 text-white text-sm font-semibold rounded-lg hover:bg-sky-600 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500">Process Another</button>
                            </div>
                         </header>
                         
                         <div className="flex-grow overflow-hidden relative">
                             <div ref={scrollContainerRef} className="h-full p-4 md:p-6 overflow-y-auto bg-slate-100 dark:bg-slate-800 bg-[url('https://uploads-ssl.webflow.com/5a979516ab15960001a2d59a/5ab17498c368380001b8d787_seamless-pattern-with-telegram-l-c63e29f0302489a24d2621742417a58a.png')] dark:bg-[url('https://uploads-ssl.webflow.com/5a979516ab15960001a2d59a/5ab17498c368380001b8d787_seamless-pattern-with-telegram-l-c63e29f0302489a24d2621742417a58a.png')] bg-repeat bg-center" style={{'--tw-bg-opacity': theme === 'dark' ? 0.05 : 0.1} as React.CSSProperties}>
-                                <div className="flex flex-col gap-4 max-w-4xl mx-auto">{isSearching && (<div className="text-center my-2 sticky top-2 z-10"><p className="text-sm text-slate-500 dark:text-slate-400 bg-slate-200/70 dark:bg-slate-700/70 backdrop-blur-sm inline-block px-3 py-1 rounded-full">{searchResultCount === 0 ? 'No messages found.' : `Found ${searchResultCount} message${searchResultCount !== 1 ? 's' : ''}.`}</p></div>)}{messageGroups.map((group, groupIndex) => { const firstMessage = group[0]; if (!firstMessage) return null; const dateStr = formatDateSeparator(new Date(firstMessage.date).getTime()); return (<React.Fragment key={`${firstMessage.date_unixtime}-${groupIndex}`}><div className="flex justify-center my-4 sticky top-2 z-10"><span className="bg-slate-200 dark:bg-slate-900/80 backdrop-blur-sm text-slate-600 dark:text-slate-300 text-xs font-semibold px-3 py-1 rounded-full shadow-sm">{dateStr}</span></div><div className="flex flex-col gap-1">{group.map((message, messageIndex) => { const prevMessage = messageIndex > 0 ? group[messageIndex - 1] : null; const showSender = isGroupChat && (!prevMessage || prevMessage.from_id !== message.from_id); return (<MessageBubble key={message.id} message={message} isOwnMessage={message.from_id === ownerId} showSender={showSender} searchQuery={isSearching ? searchQuery : undefined} createBlobUrl={createBlobUrl} />) })}</div></React.Fragment>);})}</div>
+                                <div className="flex flex-col gap-4 max-w-4xl mx-auto">{isSearching && (<div className="text-center my-2 sticky top-2 z-10"><p className="text-sm text-slate-500 dark:text-slate-400 bg-slate-200/70 dark:bg-slate-700/70 backdrop-blur-sm inline-block px-3 py-1 rounded-full">{searchResultCount === 0 ? 'No messages found.' : `Found ${searchResultCount} message${searchResultCount !== 1 ? 's' : ''}.`}</p></div>)}{messageGroups.map((group, groupIndex) => { const firstMessage = group[0]; if (!firstMessage) return null; const dateStr = formatDateSeparator(new Date(firstMessage.date).getTime()); return (<React.Fragment key={`${firstMessage.date_unixtime}-${groupIndex}`}><div className="flex justify-center my-4 sticky top-2 z-10"><span className="bg-slate-200 dark:bg-slate-900/80 backdrop-blur-sm text-slate-600 dark:text-slate-300 text-xs font-semibold px-3 py-1 rounded-full shadow-sm">{dateStr}</span></div><div className="flex flex-col gap-1">{group.map((message, messageIndex) => { const prevMessage = messageIndex > 0 ? group[messageIndex - 1] : null; const showSender = isGroupChat && (!prevMessage || prevMessage.from_id !== message.from_id); return (<MessageBubble key={message.id} message={message} isOwnMessage={message.from_id === rightAlignedId} showSender={showSender} searchQuery={isSearching ? searchQuery : undefined} createBlobUrl={createBlobUrl} />) })}</div></React.Fragment>);})}</div>
                             </div>
                         </div>
                     </>

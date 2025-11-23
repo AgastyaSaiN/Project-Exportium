@@ -67,6 +67,7 @@ const HomePage: React.FC = () => {
                         slug={platform.slug}
                         icon={platform.icon}
                         color={platform.color}
+                        badge={platform.badge}
                     />
                     </div>
                 );

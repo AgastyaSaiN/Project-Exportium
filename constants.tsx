@@ -84,13 +84,14 @@ export interface Platform {
   slug: string;
   icon: React.FC<React.SVGProps<SVGSVGElement>>;
   color: string;
+  badge?: string;
 }
 
 export const PLATFORMS: Platform[] = [
   { name: 'Instagram', slug: 'instagram', icon: InstagramIcon, color: 'text-pink-500' },
   { name: 'WhatsApp', slug: 'whatsapp', icon: WhatsAppIcon, color: 'text-green-500' },
-  { name: 'Snapchat', slug: 'snapchat', icon: SnapchatIcon, color: 'text-yellow-400' },
-  { name: 'Telegram', slug: 'telegram', icon: TelegramIcon, color: 'text-sky-500' },
+  { name: 'Snapchat', slug: 'snapchat', icon: SnapchatIcon, color: 'text-yellow-400', badge: 'Beta' },
+  { name: 'Telegram', slug: 'telegram', icon: TelegramIcon, color: 'text-sky-500', badge: 'Beta' },
 ];
 
 export const COMING_SOON_PLATFORMS: Platform[] = [

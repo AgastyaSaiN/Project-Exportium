@@ -74,34 +74,52 @@ const TelegramPage: React.FC<TelegramPageProps> = ({ platform }) => {
 
         try {
             const fileList = Array.from(files);
-            const firstPath = (fileList[0] as any).webkitRelativePath;
-            if (!firstPath) {
-                throw new Error("Your browser does not support folder uploads. Please try Chrome, Edge, or Firefox.");
+            
+            // IMPROVED: Find result.json anywhere in the file list
+            const resultFile = fileList.find(f => f.name === 'result.json' || f.name === 'export_result.json');
+            
+            if (!resultFile) {
+                throw new Error("This doesn't look like a valid Telegram export. Could not find 'result.json'.");
             }
-            const basePath = firstPath.substring(0, firstPath.indexOf('/') + 1);
+
+            // Determine the root path based on where result.json was found
+            const resultPath = (resultFile as any).webkitRelativePath || resultFile.name;
+            const rootPath = resultPath.includes('/') ? resultPath.substring(0, resultPath.lastIndexOf('/') + 1) : '';
 
             const localFileMap = new Map<string, File>();
             fileList.forEach((file: any) => {
-                const relativePath = file.webkitRelativePath.replace(basePath, '');
-                if (relativePath) localFileMap.set(relativePath, file);
+                const relativePath = (file.webkitRelativePath || file.name);
+                // Only include files that are within the same root structure as result.json
+                if (relativePath.startsWith(rootPath)) {
+                    localFileMap.set(relativePath.substring(rootPath.length), file);
+                }
             });
             
             setFileMap(localFileMap);
-
-            const manifestFile = localFileMap.get('result.json') || localFileMap.get('export_result.json');
-            if (!manifestFile) {
-                throw new Error("This doesn't look like a valid Telegram export. Could not find 'result.json'.");
-            }
             
             setProcessingStep('Parsing chat data...');
-            const content = await manifestFile.text();
+            const content = await resultFile.text();
             const data = JSON.parse(content);
             
             if (!data.chats || !data.chats.list) {
                 throw new Error("The 'result.json' file seems to be malformed. Chat list not found.");
             }
 
-            setOwnerId(data.id);
+            // IMPROVED: Robust ID detection
+            let detectedId = data.id;
+            if (!detectedId && data.personal_information) {
+                detectedId = data.personal_information.user_id || data.personal_information.id;
+            }
+            
+            // Normalize to "user123" format used in messages
+            if (detectedId) {
+                const idStr = String(detectedId);
+                // Ensure it matches the 'from_id' format in messages (usually "user12345")
+                setOwnerId(idStr.startsWith('user') ? idStr : `user${idStr}`);
+            } else {
+                // Allow empty owner ID - user can set it in settings later
+                setOwnerId('');
+            }
             
             const processedChats: Chat[] = data.chats.list
                 .filter((chat: any) => chat.messages && chat.messages.length > 0)
@@ -139,7 +157,16 @@ const TelegramPage: React.FC<TelegramPageProps> = ({ platform }) => {
         if (mediaFile) {
             return URL.createObjectURL(mediaFile);
         }
-        console.warn(`Could not find media for URI: ${uri}`);
+        // Fallback for absolute paths sometimes present in older exports
+        if (uri.startsWith('Files/')) {
+             // Try matching just the filename if strict path fails
+             const filename = uri.split('/').pop();
+             for(const [key, file] of fileMap.entries()) {
+                 if (key.endsWith(filename!)) {
+                     return URL.createObjectURL(file);
+                 }
+             }
+        }
         return undefined;
     }, [fileMap]);
 
@@ -207,7 +234,7 @@ const TelegramPage: React.FC<TelegramPageProps> = ({ platform }) => {
         }
     };
 
-    if (chats.length > 0 && ownerId) {
+    if (chats.length > 0) {
         return (
              <div className="w-screen h-screen bg-slate-100 dark:bg-slate-900 flex flex-col">
                 <TelegramChatViewer 
