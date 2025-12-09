@@ -1,45 +1,33 @@
 
-export interface Photo {
-  file: string; // path to file
-  width: number;
-  height: number;
-  blobUrl?: string;
+export interface TelegramTextEntity {
+  type: string;
+  text: string;
+  href?: string;
 }
 
-export interface Video {
-  file: string;
-  width: number;
-  height: number;
-  duration_seconds: number;
-  mime_type: string;
-  thumb: string; // path to thumbnail
-  blobUrl?: string;
-  thumbBlobUrl?: string;
-}
-
-// Telegram text can be a string or an array of rich text objects
-export type TelegramText = string | (string | { type: string; text: string })[];
+export type TelegramText = string | (string | TelegramTextEntity)[];
 
 export interface Message {
   id: number;
   type: string;
-  date: string; // ISO 8601 format
+  date: string;
   date_unixtime: string;
-  from: string | null; // Can be null for service messages
+  from: string | null;
   from_id: string;
   text: TelegramText;
-  photo?: string; // path to photo
-  video_file?: string; // path to video
-  file?: string; // path to generic file
+  file?: string;
+  photo?: string;
+  video_file?: string;
+  voice_message?: string;
+  audio_file?: string;
   sticker_emoji?: string;
+  reply_to_message_id?: number;
+  forwarded_from?: string;
   width?: number;
   height?: number;
-  mime_type?: string;
   duration_seconds?: number;
-  thumbnail?: string; // path to thumbnail
-  // Custom properties for viewer
-  photoData?: Photo;
-  videoData?: Video;
+  mime_type?: string;
+  thumbnail?: string;
 }
 
 export interface Chat {
@@ -47,6 +35,5 @@ export interface Chat {
   name: string;
   type: string;
   messages: Message[];
-  // Custom properties for viewer
   lastActivity: number;
 }

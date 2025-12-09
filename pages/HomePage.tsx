@@ -34,7 +34,7 @@ const HomePage: React.FC = () => {
         <div className="flex-grow flex flex-col items-center justify-center w-full lg:w-auto">
             <header className="text-center mb-8 md:mb-12">
             <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold text-slate-900 dark:text-white tracking-tight">
-                Project Keicei v1
+                Exportium UI
             </h1>
             <p className="mt-3 text-lg sm:text-xl text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
                 Your exported data, beautifully reimagined.
@@ -46,7 +46,7 @@ const HomePage: React.FC = () => {
             style={{ height: `${radius * 2 + 120}px`, width: `${radius * 2 + 120}px` }}
             >
             <LogoIcon
-                aria-label="Project Keicei Logo"
+                aria-label="Exportium UI Logo"
                 className="w-24 h-24 sm:w-32 sm:h-32 md:w-40 md:h-40 transition-all duration-300 ease-in-out"
             />
 

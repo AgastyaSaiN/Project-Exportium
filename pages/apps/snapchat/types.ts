@@ -1,25 +1,36 @@
-// FIX: Removed circular import of 'Message' from './types' which was causing a conflict with the local declaration of the 'Message' interface.
 
-export interface Message {
+export interface SnapchatChatHistory {
+  // Allow for any keys since structure varies
+  [key: string]: any;
+}
+
+export interface RawSnapchatMessage {
+  // Allow for any keys and case variations
+  [key: string]: any;
+}
+
+export interface InternalMessage {
   id: string;
-  sender_name: string;
-  timestamp_ms: number;
-  media_type: string;
+  sender: string;
+  timestamp: number;
+  type: 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'STICKER' | 'SNAP' | 'UNKNOWN';
   content?: string;
-  linkedMedia?: SnapchatMedia;
+  media?: InternalMedia;
+  isSaved: boolean; // Differentiates "Chat History" vs "Saved-in-Chat History"
 }
 
-export interface Chat {
-  id:string;
-  title: string;
-  participants: { name: string }[];
-  messages: Message[];
-  lastActivity?: number;
-}
-
-export interface SnapchatMedia {
-  type: 'image' | 'video' | 'sticker';
-  path: string;
+export interface InternalMedia {
+  type: 'image' | 'video' | 'audio';
+  uri: string;
   blobUrl?: string;
-  date?: number; // timestamp_ms
+  filename: string;
+}
+
+export interface InternalChat {
+  id: string;
+  participant: string; // The "other" person
+  messages: InternalMessage[];
+  messageCount: number;
+  mediaCount: number;
+  lastActivity: number;
 }
