@@ -1,15 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
 
-const WifiIcon: React.FC<{ className?: string }> = ({ className }) => (
+const CloudArrowDownIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 011.06 0z" />
-    </svg>
-);
-
-const WifiSlashIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
     </svg>
 );
 
@@ -21,11 +15,23 @@ const ShieldCheckIcon: React.FC<{ className?: string }> = ({ className }) => (
 
 const PrivacyBadge: React.FC = () => {
     const [isOnline, setIsOnline] = useState(navigator.onLine);
+    const [isCached, setIsCached] = useState(false);
     const [isHovered, setIsHovered] = useState(false);
 
     useEffect(() => {
         const handleOnline = () => setIsOnline(true);
         const handleOffline = () => setIsOnline(false);
+
+        // Check if service worker is controlling the page (means assets are cached)
+        const checkSW = () => {
+            if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+                setIsCached(true);
+            }
+        };
+        
+        checkSW();
+        // Also listen for controller change (when SW takes over for the first time)
+        navigator.serviceWorker?.addEventListener('controllerchange', checkSW);
 
         window.addEventListener('online', handleOnline);
         window.addEventListener('offline', handleOffline);
@@ -33,9 +39,11 @@ const PrivacyBadge: React.FC = () => {
         return () => {
             window.removeEventListener('online', handleOnline);
             window.removeEventListener('offline', handleOffline);
+            navigator.serviceWorker?.removeEventListener('controllerchange', checkSW);
         };
     }, []);
 
+    // 1. OFFLINE MODE (Best State)
     if (!isOnline) {
         return (
             <div className="fixed bottom-4 right-4 z-50 animate-fade-in">
@@ -43,36 +51,51 @@ const PrivacyBadge: React.FC = () => {
                     <ShieldCheckIcon className="w-5 h-5" />
                     <div className="flex flex-col">
                         <span className="text-xs font-bold uppercase tracking-wider">Offline & Secure</span>
-                        <span className="text-[10px] opacity-90">Data isolated</span>
+                        <span className="text-[10px] opacity-90">Running locally</span>
                     </div>
                 </div>
             </div>
         );
     }
 
-    return (
-        <div 
-            className="fixed bottom-4 right-4 z-50"
-            onMouseEnter={() => setIsHovered(true)}
-            onMouseLeave={() => setIsHovered(false)}
-        >
-            <div className={`flex items-center gap-3 px-4 py-2 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-full shadow-lg border border-slate-200 dark:border-slate-700 transition-all duration-300 ${isHovered ? 'pr-4' : 'pr-2'}`}>
-                <div className="relative">
-                    <WifiIcon className="w-5 h-5" />
-                    <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-yellow-500"></span>
-                    </span>
-                </div>
-                
-                {isHovered ? (
-                    <div className="flex flex-col animate-fade-in">
-                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200">Online</span>
-                        <span className="text-[10px] text-slate-500 dark:text-slate-400">Disconnect Wi-Fi for max privacy</span>
+    // 2. ONLINE & CACHED (Ready to go offline)
+    if (isCached) {
+        return (
+            <div 
+                className="fixed bottom-4 right-4 z-50 cursor-help"
+                onMouseEnter={() => setIsHovered(true)}
+                onMouseLeave={() => setIsHovered(false)}
+            >
+                <div className={`flex items-center gap-3 px-4 py-2 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-full shadow-lg border border-slate-200 dark:border-slate-700 transition-all duration-300 ${isHovered ? 'pr-4' : 'pr-2'}`}>
+                    <div className="relative">
+                        <ShieldCheckIcon className="w-5 h-5 text-emerald-500" />
+                        <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400"></span>
+                        </span>
                     </div>
-                ) : (
-                    <span className="text-xs font-medium hidden sm:inline-block">Ready</span>
-                )}
+                    
+                    {isHovered ? (
+                        <div className="flex flex-col animate-fade-in">
+                            <span className="text-xs font-bold text-slate-800 dark:text-slate-200">App Installed</span>
+                            <span className="text-[10px] text-slate-500 dark:text-slate-400">Disconnect Wi-Fi to test</span>
+                        </div>
+                    ) : (
+                        <span className="text-xs font-medium hidden sm:inline-block text-emerald-600 dark:text-emerald-400">Secure</span>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
+    // 3. ONLINE & INSTALLING (Wait...)
+    return (
+        <div className="fixed bottom-4 right-4 z-50">
+             <div className="flex items-center gap-3 px-4 py-2 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-full shadow-lg border border-slate-200 dark:border-slate-700">
+                <CloudArrowDownIcon className="w-5 h-5 animate-bounce text-blue-500" />
+                <div className="flex flex-col">
+                    <span className="text-xs font-bold">Caching...</span>
+                    <span className="text-[10px] text-slate-400">Preparing for offline</span>
+                </div>
             </div>
         </div>
     );
