@@ -24,10 +24,15 @@ const SnapchatPage: React.FC<SnapchatPageProps> = ({ platform }) => {
     const [stats, setStats] = useState<any>(null);
     const [zipFile, setZipFile] = useState<File | null>(null);
 
-    // Apply dark theme by default for Snapchat
+    // Apply dark theme by default for Snapchat, but preserve previous state on unmount
     useEffect(() => {
+        const wasDark = document.documentElement.classList.contains('dark');
         document.documentElement.classList.add('dark');
-        return () => document.documentElement.classList.remove('dark');
+        return () => {
+            if (!wasDark) {
+                document.documentElement.classList.remove('dark');
+            }
+        };
     }, []);
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -151,3 +156,4 @@ const SnapchatPage: React.FC<SnapchatPageProps> = ({ platform }) => {
 };
 
 export default SnapchatPage;
+    

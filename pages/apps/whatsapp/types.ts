@@ -9,6 +9,11 @@ export interface Video {
   blobUrl?: string;
 }
 
+export interface Audio {
+  uri: string;
+  blobUrl?: string;
+}
+
 export interface Message {
   id: string;
   type: 'message' | 'system';
@@ -17,6 +22,7 @@ export interface Message {
   content: string;
   photo?: Photo;
   video?: Video;
+  audio?: Audio;
 }
 
 export interface Chat {

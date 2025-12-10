@@ -3,7 +3,7 @@ import React from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { PLATFORMS } from '../constants';
 import SnapchatPage from './apps/snapchat/SnapchatPage';
-import InstagramPage from './apps/InstagramPage';
+import InstagramPage from './apps/instagram/InstagramPage';
 import WhatsAppPage from './apps/whatsapp/WhatsAppPage';
 import TelegramPage from './apps/telegram/TelegramPage';
 
@@ -76,3 +76,4 @@ const AppPage: React.FC = () => {
 };
 
 export default AppPage;
+    

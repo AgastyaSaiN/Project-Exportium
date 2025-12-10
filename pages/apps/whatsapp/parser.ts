@@ -1,4 +1,5 @@
-import { Chat, Message, Photo, Video } from './types';
+
+import { Chat, Message, Photo, Video, Audio } from './types';
 
 // Regex to capture a message with an author. Handles different timestamp formats and separators.
 const MESSAGE_WITH_AUTHOR_REGEX = /^\[?(\d{1,2}[./]\d{1,2}[./]\d{2,4}),?\s(\d{1,2}:\d{2}(?::\d{2})?(?:\s[AaPp][Mm])?)\]?(?:\s-\s|\s)([^:]+?):\s([\s\S]+)/;
@@ -8,13 +9,14 @@ const MESSAGE_WITHOUT_AUTHOR_REGEX = /^\[?(\d{1,2}[./]\d{1,2}[./]\d{2,4}),?\s(\d
 const CONTINUATION_REGEX = /^(?!\[?\d{1,2}[./]\d{1,2}[./]\d{2,4},?)/;
 
 // Media attachment patterns for both Android and iOS.
-const MEDIA_ATTACHED_REGEX = /([\w\s-]+\.(?:jpg|jpeg|png|webp|gif|mp4|mov|avi|mkv|opus))\s*\(file attached\)/;
-const MEDIA_ATTACHED_IOS_REGEX = /<attached:\s*([\w\s-]+\.(?:jpg|jpeg|png|webp|gif|mp4|mov|avi|mkv|opus))>/;
+const MEDIA_ATTACHED_REGEX = /([\w\s-]+\.(?:jpg|jpeg|png|webp|gif|mp4|mov|avi|mkv|opus|m4a|mp3|ogg|amr))\s*\(file attached\)/;
+const MEDIA_ATTACHED_IOS_REGEX = /<attached:\s*(.+?)>/; // Made more permissive to catch files with spaces/brackets
 const MEDIA_OMITTED_REGEX = /<media omitted>/i;
 
 
 const isImage = (filename: string) => /\.(jpg|jpeg|png|webp|gif)$/i.test(filename);
 const isVideo = (filename: string) => /\.(mp4|mov|avi|mkv)$/i.test(filename);
+const isAudio = (filename: string) => /\.(opus|m4a|mp3|ogg|amr|wav)$/i.test(filename);
 
 const parseTimestamp = (dateStr: string, timeStr: string): number => {
     const cleanDateStr = dateStr.replace(/\./g, '/');
@@ -105,6 +107,7 @@ export async function* parseWhatsAppChat(fileContent: string, fileName: string):
 
             let photo: Photo | undefined;
             let video: Video | undefined;
+            let audio: Audio | undefined;
             let messageContent = content;
 
             const mediaMatch = content.match(MEDIA_ATTACHED_REGEX) || content.match(MEDIA_ATTACHED_IOS_REGEX);
@@ -114,10 +117,15 @@ export async function* parseWhatsAppChat(fileContent: string, fileName: string):
                     photo = { uri: filename };
                 } else if (isVideo(filename)) {
                     video = { uri: filename };
+                } else if (isAudio(filename)) {
+                    audio = { uri: filename };
                 }
+                
                 messageContent = content.replace(mediaMatch[0], '').trim();
                 if (!messageContent) {
-                   messageContent = photo ? '📷 Photo' : '📹 Video';
+                   if (photo) messageContent = '📷 Photo';
+                   else if (video) messageContent = '📹 Video';
+                   else if (audio) messageContent = '🎤 Voice Message';
                 }
             }
             
@@ -129,6 +137,7 @@ export async function* parseWhatsAppChat(fileContent: string, fileName: string):
                 content: messageContent,
                 photo,
                 video,
+                audio
             };
 
             messages.push(newMessage);
