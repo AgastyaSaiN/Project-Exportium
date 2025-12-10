@@ -8,11 +8,20 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
       .then(registration => {
-        console.log('App is ready for desktop installation');
+        console.log('App is ready for desktop installation. Scope:', registration.scope);
       })
       .catch(error => {
         console.warn('Service worker registration failed:', error);
       });
+      
+    // Refresh page if the service worker changes (ensures user is on latest version)
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!refreshing) {
+        refreshing = true;
+        window.location.reload();
+      }
+    });
   });
 }
 

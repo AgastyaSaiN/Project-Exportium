@@ -1,78 +1,78 @@
 
-const CACHE_NAME = 'exportium-v3-offline-capable';
+const CACHE_NAME = 'exportium-v6-offline-trust';
 
-// We explicitly cache the CDN assets we know we need.
-// Note: Dynamic imports (like React from the importmap) are handled by the runtime caching in the fetch event below.
-const PRE_CACHE_URLS = [
+// Files strictly required for the app shell to render
+const APP_SHELL = [
   '/',
   '/index.html',
   '/manifest.json',
   '/index.tsx',
-  'https://cdn.tailwindcss.com',
-  'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap'
+  // Tailwind is critical for layout
+  'https://cdn.tailwindcss.com'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      console.log('Installing dependencies for offline access...');
-      // We use addAll. If one fails, the whole install fails, ensuring consistency.
-      return cache.addAll(PRE_CACHE_URLS);
+    caches.open(CACHE_NAME).then(async (cache) => {
+      console.log('[SW] Installing... Caching App Shell');
+      // We use addAll for local files. If any fail, install fails.
+      await cache.addAll(APP_SHELL);
     })
   );
+  // Force this SW to become the active service worker immediately
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    }).then(() => self.clients.claim())
+    caches.keys().then((keys) => Promise.all(
+      keys.map((key) => {
+        if (key !== CACHE_NAME) {
+          console.log('[SW] Cleaning old cache:', key);
+          return caches.delete(key);
+        }
+      })
+    )).then(() => self.clients.claim()) // Take control of all clients immediately
   );
 });
 
 self.addEventListener('fetch', (event) => {
-  // Only handle GET requests
-  if (event.request.method !== 'GET') return;
-  if (!event.request.url.startsWith('http')) return;
+  // 1. NAVIGATION REQUESTS (HTML)
+  // This is the key fix for "Cannot reach site" when offline.
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .catch(() => {
+          console.log('[SW] Offline navigation. Serving index.html');
+          return caches.match('/index.html');
+        })
+    );
+    return;
+  }
 
+  // 2. ASSET REQUESTS (JS, CSS, Images, Fonts)
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      // 1. Cache Hit: Return immediately (Fastest & Offline support)
+      // Return cached response if available
       if (cachedResponse) {
         return cachedResponse;
       }
 
-      // 2. Cache Miss: Fetch from network
+      // Otherwise fetch from network
       return fetch(event.request).then((networkResponse) => {
-        // Check if valid response
-        if (!networkResponse || networkResponse.status !== 200 || networkResponse.type === 'error') {
-            return networkResponse;
+        // Cache valid responses for next time (Dynamic Caching)
+        // We cache opaque responses (status 0) for things like Google Fonts/Icons
+        if (networkResponse && (networkResponse.status === 200 || networkResponse.status === 0)) {
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            try {
+                cache.put(event.request, responseToCache);
+            } catch (e) {
+                // Ignore quota errors or invalid schemes
+            }
+          });
         }
-
-        // Cache the new resource (Dynamic Caching)
-        // This captures the React/ReactDOM files from the CDN as they load
-        const responseToCache = networkResponse.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseToCache);
-        });
-
         return networkResponse;
-      }).catch((error) => {
-         // 3. Network Fail (Offline):
-         // If we are navigating to a page (like /app/instagram) and it's not in cache,
-         // serve index.html to let React Router handle the view.
-         if (event.request.mode === 'navigate') {
-             return caches.match('/index.html');
-         }
-         // Optional: Return a placeholder image for missing images
-         return null;
       });
     })
   );
