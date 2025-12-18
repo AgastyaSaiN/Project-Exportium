@@ -22,7 +22,30 @@ function createWindow() {
     icon: app.isPackaged
       ? path.join(__dirname, '../dist/logo keicei.png')
       : path.join(__dirname, '../public/logo keicei.png'),
+    frame: false, // Disable system title bar
   });
+
+  // Window Controls IPC
+  ipcMain.on('window-minimize', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    win?.minimize();
+  });
+  ipcMain.on('window-maximize', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win?.isMaximized()) {
+      win.unmaximize();
+    } else {
+      win?.maximize();
+    }
+  });
+  ipcMain.on('window-close', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    win?.close();
+  });
+
+  // Maximize/Unmaximize listeners
+  mainWindow.on('maximize', () => mainWindow?.webContents.send('window-maximized'));
+  mainWindow.on('unmaximize', () => mainWindow?.webContents.send('window-unmaximized'));
 
   // Check if we are in development mode
   const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;

@@ -14,5 +14,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
             // Deliberately strip event as it includes `sender`
             ipcRenderer.on(channel, (event, ...args) => func(...args));
         }
+    },
+    windowControls: {
+        minimize: () => ipcRenderer.send('window-minimize'),
+        maximize: () => ipcRenderer.send('window-maximize'),
+        close: () => ipcRenderer.send('window-close'),
+        onMaximizeChange: (callback: (isMaximized: boolean) => void) => {
+            ipcRenderer.on('window-maximized', () => callback(true));
+            ipcRenderer.on('window-unmaximized', () => callback(false));
+        }
     }
 });
