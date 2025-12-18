@@ -1,111 +1,106 @@
 
-const CACHE_NAME = 'exportium-v10-offline-robust';
+const CACHE_NAME = 'exportium-v1.0.0-gold';
 
-// 1. APP SHELL: The minimal files needed to boot the app.
-// We explicitly cache '/' and '/index.html' to ensure the entry point works.
-const APP_SHELL = [
+// 1. CRITICAL ASSETS: These MUST be cached for the app to boot.
+// If any of these fail to cache, the Service Worker installation fails.
+const CRITICAL_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
   '/index.tsx',
-  '/App.tsx'
+  // We include the CSS CDN here because without it, the app looks broken.
+  'https://cdn.tailwindcss.com'
 ];
 
-// 2. EXTERNAL DEPENDENCIES: Must match index.html importmap EXACTLY.
-// Any mismatch (e.g., missing trailing slash) will cause the cache to fail.
-const EXTERNAL_DEPS = [
-  'https://cdn.tailwindcss.com',
-  'https://aistudiocdn.com/react@^19.1.1',
-  'https://aistudiocdn.com/react-dom@^19.1.1',
-  'https://aistudiocdn.com/react-router-dom@^7.8.2',
-  'https://aistudiocdn.com/jszip@^3.10.1',
-  'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap'
+// 2. OPTIONAL ASSETS: These are good to have, but if they fail (e.g. CORS, offline), 
+// we shouldn't kill the entire app installation.
+const OPTIONAL_ASSETS = [
+  'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
+  'https://cdn-icons-png.flaticon.com/512/4128/4128047.png'
 ];
 
+// Install Event: Cache files
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(async (cache) => {
-      console.log('[SW] Installing... Caching App Shell');
+      console.log('SW: Caching critical assets...');
       
-      // Strategy: Fetch index.html once, but save it under multiple aliases ('/' and '/index.html')
-      // This ensures that however the browser requests the root, we have a match.
+      // Critical: Fail hard if these don't load
+      await cache.addAll(CRITICAL_ASSETS);
+
+      // Optional: Try to load, but don't crash if they fail
+      console.log('SW: Caching optional assets...');
       try {
-        const indexResponse = await fetch('/index.html');
-        if (indexResponse.ok) {
-            await cache.put('/index.html', indexResponse.clone());
-            await cache.put('/', indexResponse.clone());
-        }
-      } catch (e) {
-          console.error('[SW] Failed to cache index.html during install', e);
+        await cache.addAll(OPTIONAL_ASSETS);
+      } catch (err) {
+        console.warn('SW: Some optional assets failed to cache', err);
       }
-      
-      // Cache other local source files
-      await cache.addAll(APP_SHELL.filter(url => url !== '/' && url !== '/index.html'));
-
-      // Cache external CDNs
-      // We process them individually so one failure doesn't kill the whole install,
-      // though these are critical for the app to look right.
-      const externalPromises = EXTERNAL_DEPS.map(url => {
-        const request = new Request(url, { mode: 'cors' });
-        return fetch(request).then(response => {
-          if (!response.ok) throw new Error(`Status ${response.status}`);
-          return cache.put(request, response);
-        }).catch(e => console.warn(`[SW] Failed to cache ${url}`, e));
-      });
-
-      await Promise.all(externalPromises);
     })
   );
-  // Force this SW to become active immediately (don't wait for tabs to close)
   self.skipWaiting();
 });
 
+// Activate Event: Cleanup old caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then(keys => Promise.all(
-      keys.map(key => {
-        // Delete old caches to ensure users get the latest version
-        if (key !== CACHE_NAME) return caches.delete(key);
-      })
-    )).then(() => self.clients.claim()) // Take control of all clients immediately
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cacheName) => {
+          if (cacheName !== CACHE_NAME) {
+            console.log('SW: Clearing old cache', cacheName);
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    }).then(() => self.clients.claim())
   );
 });
 
+// Fetch Event: The Core Logic
 self.addEventListener('fetch', (event) => {
-  // 1. NAVIGATION FALLBACK (The fix for "You're offline")
-  // If the browser requests a page navigation (mode: navigate) and fails,
-  // we return the cached index.html.
-  if (event.request.mode === 'navigate') {
-    event.respondWith(
-      fetch(event.request).catch(() => {
-        return caches.match('/index.html')
-          .then(resp => resp || caches.match('/'))
-          .then(resp => {
-             if(resp) return resp;
-             throw new Error('Offline and index.html not found in cache.');
-          });
-      })
-    );
-    return;
-  }
+  // We only care about GET requests
+  if (event.request.method !== 'GET') return;
+  if (!event.request.url.startsWith('http')) return;
 
-  // 2. STALE-WHILE-REVALIDATE for everything else (scripts, images)
-  // Serve from cache immediately, then update from network in background.
   event.respondWith(
-    caches.match(event.request).then(cachedResp => {
-      const networkFetch = fetch(event.request).then(netResp => {
-        // If network works, update the cache for next time
-        if (netResp && netResp.status === 200) {
-          const respClone = netResp.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, respClone));
+    (async () => {
+      // 1. Try Cache First (Fastest & Offline Friendly)
+      const cachedResponse = await caches.match(event.request);
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+
+      // 2. Network Fallback
+      try {
+        const networkResponse = await fetch(event.request);
+        
+        // Dynamic Caching: If we successfully fetched something valid, cache it for next time.
+        // This handles all the React chunks and dynamic imports automatically.
+        if (networkResponse && networkResponse.status === 200 && networkResponse.type !== 'error') {
+           const responseToCache = networkResponse.clone();
+           caches.open(CACHE_NAME).then((cache) => {
+             cache.put(event.request, responseToCache);
+           });
         }
-        return netResp;
-      }).catch(() => {
-          // Network failed, rely solely on cache
-      });
-      
-      // Return cache if available, otherwise wait for network
-      return cachedResp || networkFetch;
-    })
+        return networkResponse;
+
+      } catch (error) {
+        // 3. OFFLINE FALLBACK LOGIC
+        // This is the specific fix for "Cannot reach site".
+        // If the request was for a page navigation (mode: 'navigate') 
+        // OR it accepts HTML headers, we return the App Shell (index.html).
+        
+        if (event.request.mode === 'navigate' || 
+            (event.request.method === 'GET' && event.request.headers.get('accept').includes('text/html'))) {
+          console.log('SW: Network failed. Serving offline App Shell.');
+          return caches.match('/index.html');
+        }
+
+        // For missing images/assets, we could return a placeholder here if we wanted.
+        // For now, let them fail naturally.
+        console.log('SW: Network request failed', event.request.url);
+        return null; // Or return new Response('Offline', { status: 503 })
+      }
+    })()
   );
 });
