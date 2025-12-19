@@ -18,11 +18,17 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: false, // Fix for "Cannot use import statement outside a module" in preload
+      // partition: 'persist:main', 
     },
     icon: app.isPackaged
       ? path.join(__dirname, '../dist/logo keicei.png')
       : path.join(__dirname, '../public/logo keicei.png'),
-    frame: false, // Disable system title bar
+    // Frameless window Config
+    frame: true,
+    // transparent: false, 
+    // We are simulating transparency in the TitleBar CSS, not the whole window.
+    autoHideMenuBar: true,
   });
 
   // Window Controls IPC
@@ -51,7 +57,7 @@ function createWindow() {
   const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
   if (isDev) {
-    mainWindow.loadURL('http://localhost:5173');
+    mainWindow.loadURL('http://localhost:3000');
     mainWindow.webContents.openDevTools();
   } else {
     // In production, load the local index.html
