@@ -1,7 +1,7 @@
 {
   "name": "exportium-ui",
   "private": true,
-  "version": "0.0.4",
+  "version": "0.0.5",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -46,7 +46,8 @@
       "allowToChangeInstallationDirectory": true
     },
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "public/logo.png"
     },
     "publish": {
       "provider": "github",

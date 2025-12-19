@@ -22,8 +22,8 @@ function createWindow() {
       // partition: 'persist:main', 
     },
     icon: app.isPackaged
-      ? path.join(__dirname, '../dist/logo keicei.png')
-      : path.join(__dirname, '../public/logo keicei.png'),
+      ? path.join(__dirname, '../dist/logo.png')
+      : path.join(__dirname, '../public/logo.png'),
     // Frameless window Config
     frame: true,
     // transparent: false, 
@@ -58,7 +58,7 @@ function createWindow() {
 
   if (isDev) {
     mainWindow.loadURL('http://localhost:3000');
-    mainWindow.webContents.openDevTools();
+    // mainWindow.webContents.openDevTools(); // Commented out to stop auto-opening
   } else {
     // In production, load the local index.html
     // relative to the final built electron-main.js usually in dist-electron or similar

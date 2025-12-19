@@ -3,7 +3,7 @@ import React from 'react';
 import { HashRouter, Routes, Route } from 'react-router-dom';
 import HomePage from './pages/HomePage';
 import AppPage from './pages/AppPage';
-import PrivacyBadge from './components/PrivacyBadge';
+
 
 
 
@@ -17,7 +17,6 @@ const App: React.FC = () => {
             <Route path="/" element={<HomePage />} />
             <Route path="/app/:appName" element={<AppPage />} />
           </Routes>
-          <PrivacyBadge />
         </div>
       </div>
     </HashRouter>
