@@ -1,5 +1,4 @@
 <div align="center">
-  <img src="https://i.ibb.co/60V0Gz5/Exportium-Logo.png" alt="Exportium Logo" width="200" />
   <h1>Exportium</h1>
   <p><strong>Your Digital Life, Reimagined Offline.</strong></p>
   
