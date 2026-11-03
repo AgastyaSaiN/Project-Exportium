@@ -271,58 +271,6 @@ await check(`Instagram: ${IG_MESSAGES.toLocaleString()} messages with ${ig.media
     console.log(`       photos in chat: ${ig.mediaCount}, peak live blob URLs: ${peak}, max rows: ${maxRows}, max DOM nodes: ${maxNodes}`);
 });
 
-/** Every loaded inline photo must be drawn at its own proportions, not stretched to the bubble. */
-const assertPhotosKeepProportions = async (expectedPhotos) => {
-    await page.waitForFunction((n) => [...document.querySelectorAll('img')].filter((i) => i.complete && i.naturalWidth > 0).length >= n, expectedPhotos, { timeout: 30000 });
-    const photos = await page.evaluate(() => [...document.querySelectorAll('img')].filter((i) => i.complete && i.naturalWidth > 0).map((i) => {
-        const box = i.getBoundingClientRect();
-        return { natural: i.naturalWidth / i.naturalHeight, drawn: box.width / box.height, w: Math.round(box.width), h: Math.round(box.height) };
-    }));
-    assert.ok(photos.length >= expectedPhotos, `expected ${expectedPhotos} photos, found ${photos.length}`);
-    for (const p of photos) {
-        const error = Math.abs(p.drawn - p.natural) / p.natural;
-        assert.ok(error < 0.03, `photo drawn ${p.w}x${p.h} (ratio ${p.drawn.toFixed(2)}) but the picture is ${p.natural.toFixed(2)}: it is stretched`);
-    }
-    const ratios = photos.map((p) => p.natural.toFixed(1)).sort();
-    assert.ok(ratios.some((r) => Number(r) > 2) && ratios.some((r) => Number(r) < 0.5), 'expected both a wide and a tall photo');
-};
-
-await check('WhatsApp: wide and tall photos in a ZIP are not stretched', async () => {
-    await openRoute('#/app/whatsapp', 'WhatsApp');
-    await page.waitForFunction(() => !document.body.innerText.includes('Telegram Archive'));
-    await page.locator('input[type=file]').setInputFiles(whatsappMediaFile);
-    await page.getByText('Who are you in this chat?').waitFor({ timeout: 30000 });
-    await page.getByRole('button', { name: 'Alice' }).click();
-    await assertPhotosKeepProportions(2);
-    await assertBubbleLayout({ ownText: 'hello', otherText: 'nice' }); // owner is Alice; 'nice' is Bob's
-
-    // Clicking a photo opens it at full resolution; arrows page through; Escape returns to the chat.
-    const photos = page.locator('img[role="button"][aria-label="View photo full size"]');
-    await photos.first().click();
-    const dialog = page.getByRole('dialog');
-    await dialog.waitFor();
-    const fullWidth = () => page.evaluate(() => document.querySelector('[role="dialog"] img[alt="Full-size photo"]')?.naturalWidth ?? 0);
-    await page.waitForFunction(() => (document.querySelector('[role="dialog"] img[alt="Full-size photo"]')?.naturalWidth ?? 0) >= 1000, null, { timeout: 15000 });
-    assert.equal(await fullWidth(), 3000, 'the wide photo should open at its original 3000px width, not the 800px preview');
-    assert.match(await dialog.textContent(), /1 of 2/);
-    await page.keyboard.press('ArrowRight');
-    await page.waitForFunction(() => document.querySelector('[role="dialog"]')?.textContent.includes('2 of 2'));
-    await page.waitForFunction(() => document.querySelector('[role="dialog"] img[alt="Full-size photo"]')?.naturalWidth === 1000, null, { timeout: 15000 });
-    await page.screenshot({ path: path.join(artifacts, 'whatsapp-lightbox.png') });
-    await page.keyboard.press('Escape');
-    await dialog.waitFor({ state: 'detached' });
-    await page.screenshot({ path: path.join(artifacts, 'whatsapp-photos.png') });
-});
-
-await check('Telegram: wide and tall photos in a ZIP are not stretched', async () => {
-    await openRoute('#/app/telegram', 'Telegram');
-    await page.waitForFunction(() => !document.body.innerText.includes('WhatsApp'));
-    await page.locator('input[type=file]').first().setInputFiles(telegramMediaFile);
-    await messageRows().first().waitFor({ timeout: 30000 });
-    await assertPhotosKeepProportions(2);
-    await page.screenshot({ path: path.join(artifacts, 'telegram-photos.png') });
-});
-
 await check('Instagram: Media tab keeps its filter and position, and photos open full-size', async () => {
     // We are on the Media tab from the previous check. Narrow it to photos and scroll down.
     await page.getByRole('button', { name: 'Photos', exact: true }).click();
@@ -375,6 +323,58 @@ await check('Instagram: Media tab keeps its filter and position, and photos open
     assert.match(await page.getByRole('dialog').textContent(), new RegExp(`of ${ig.mediaCount.toLocaleString()}`));
     await page.keyboard.press('Escape');
     await page.getByRole('dialog').waitFor({ state: 'detached' });
+});
+
+/** Every loaded inline photo must be drawn at its own proportions, not stretched to the bubble. */
+const assertPhotosKeepProportions = async (expectedPhotos) => {
+    await page.waitForFunction((n) => [...document.querySelectorAll('img')].filter((i) => i.complete && i.naturalWidth > 0).length >= n, expectedPhotos, { timeout: 30000 });
+    const photos = await page.evaluate(() => [...document.querySelectorAll('img')].filter((i) => i.complete && i.naturalWidth > 0).map((i) => {
+        const box = i.getBoundingClientRect();
+        return { natural: i.naturalWidth / i.naturalHeight, drawn: box.width / box.height, w: Math.round(box.width), h: Math.round(box.height) };
+    }));
+    assert.ok(photos.length >= expectedPhotos, `expected ${expectedPhotos} photos, found ${photos.length}`);
+    for (const p of photos) {
+        const error = Math.abs(p.drawn - p.natural) / p.natural;
+        assert.ok(error < 0.03, `photo drawn ${p.w}x${p.h} (ratio ${p.drawn.toFixed(2)}) but the picture is ${p.natural.toFixed(2)}: it is stretched`);
+    }
+    const ratios = photos.map((p) => p.natural.toFixed(1)).sort();
+    assert.ok(ratios.some((r) => Number(r) > 2) && ratios.some((r) => Number(r) < 0.5), 'expected both a wide and a tall photo');
+};
+
+await check('WhatsApp: wide and tall photos in a ZIP are not stretched', async () => {
+    await openRoute('#/app/whatsapp', 'WhatsApp');
+    await page.waitForFunction(() => !document.body.innerText.includes('Telegram Archive'));
+    await page.locator('input[type=file]').setInputFiles(whatsappMediaFile);
+    await page.getByText('Who are you in this chat?').waitFor({ timeout: 30000 });
+    await page.getByRole('button', { name: 'Alice' }).click();
+    await assertPhotosKeepProportions(2);
+    await assertBubbleLayout({ ownText: 'hello', otherText: 'nice' }); // owner is Alice; 'nice' is Bob's
+
+    // Clicking a photo opens it at full resolution; arrows page through; Escape returns to the chat.
+    const photos = page.locator('img[role="button"][aria-label="View photo full size"]');
+    await photos.first().click();
+    const dialog = page.getByRole('dialog');
+    await dialog.waitFor();
+    const fullWidth = () => page.evaluate(() => document.querySelector('[role="dialog"] img[alt="Full-size photo"]')?.naturalWidth ?? 0);
+    await page.waitForFunction(() => (document.querySelector('[role="dialog"] img[alt="Full-size photo"]')?.naturalWidth ?? 0) >= 1000, null, { timeout: 15000 });
+    assert.equal(await fullWidth(), 3000, 'the wide photo should open at its original 3000px width, not the 800px preview');
+    assert.match(await dialog.textContent(), /1 of 2/);
+    await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(() => document.querySelector('[role="dialog"]')?.textContent.includes('2 of 2'));
+    await page.waitForFunction(() => document.querySelector('[role="dialog"] img[alt="Full-size photo"]')?.naturalWidth === 1000, null, { timeout: 15000 });
+    await page.screenshot({ path: path.join(artifacts, 'whatsapp-lightbox.png') });
+    await page.keyboard.press('Escape');
+    await dialog.waitFor({ state: 'detached' });
+    await page.screenshot({ path: path.join(artifacts, 'whatsapp-photos.png') });
+});
+
+await check('Telegram: wide and tall photos in a ZIP are not stretched', async () => {
+    await openRoute('#/app/telegram', 'Telegram');
+    await page.waitForFunction(() => !document.body.innerText.includes('WhatsApp'));
+    await page.locator('input[type=file]').first().setInputFiles(telegramMediaFile);
+    await messageRows().first().waitFor({ timeout: 30000 });
+    await assertPhotosKeepProportions(2);
+    await page.screenshot({ path: path.join(artifacts, 'telegram-photos.png') });
 });
 
 if (withBig) {
