@@ -1,11 +1,17 @@
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import JSZip from 'jszip';
+import type { ZipEntry } from '../../../utils/zipArchive';
 import { Platform } from '../../../constants';
 import TelegramChatViewer from './TelegramChatViewer';
 import { Chat } from './types';
 import { parseTelegramArchive } from './parser';
+import { useMediaLoader } from '../../../utils/mediaLoader';
+import { DropOverlay, RecentExports } from '../../../components/ImportExtras';
+import { trackExport } from '../../../utils/recentFiles';
+import { usePersistentState } from '../../../utils/storage';
+import { useFileDrop } from '../../../utils/useFileDrop';
+import { folderExportKey } from '../../../utils/recentFiles';
 
 // --- Icon Components ---
 
@@ -54,8 +60,8 @@ const TelegramPage: React.FC<TelegramPageProps> = ({ platform }) => {
     const [errorMessage, setErrorMessage] = useState<string>('');
     const [chats, setChats] = useState<Chat[]>([]);
     const [ownerId, setOwnerId] = useState<string>('');
-    const [fileMap, setFileMap] = useState<Map<string, File | JSZip.JSZipObject> | null>(null);
-    const [theme, setTheme] = useState<'light' | 'dark'>('light');
+    const [fileMap, setFileMap] = useState<Map<string, File | ZipEntry> | null>(null);
+    const [theme, setTheme] = usePersistentState<'light' | 'dark'>('theme', 'light');
     const fileInputRef = useRef<HTMLInputElement>(null);
     const folderInputRef = useRef<HTMLInputElement>(null);
 
@@ -69,6 +75,12 @@ const TelegramPage: React.FC<TelegramPageProps> = ({ platform }) => {
         setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
     };
 
+    const dropping = useFileDrop((files) => {
+        const file = files.find(f => /\.(zip|json)$/i.test(f.name));
+        if (file) void processUpload(file);
+        else { setErrorMessage('Drop your Telegram export: a .zip or the result.json file. For an unzipped folder use "Select Folder".'); setStatus('error'); }
+    }, chats.length === 0 && status !== 'processing');
+
     const handleSelectArchiveClick = () => {
         fileInputRef.current?.click();
     };
@@ -77,7 +89,10 @@ const TelegramPage: React.FC<TelegramPageProps> = ({ platform }) => {
         folderInputRef.current?.click();
     };
     
+    const [exportKey, setExportKey] = useState<string | undefined>();
+
     const processUpload = async (input: File | FileList) => {
+        setExportKey(input instanceof File ? trackExport('telegram', input) : folderExportKey('telegram', Array.from(input)));
         setStatus('processing');
         setProcessingStep('Starting import...');
         setErrorMessage('');
@@ -118,40 +133,33 @@ const TelegramPage: React.FC<TelegramPageProps> = ({ platform }) => {
         if (event.target) event.target.value = '';
     };
     
-    const createBlobUrl = useCallback(async (uri: string): Promise<string | undefined> => {
-        if (!fileMap) return undefined;
-        
-        // Clean URI
-        const cleanUri = uri.replace(/^\.\//, '');
-        
-        let mediaFile = fileMap.get(cleanUri);
-        
-        // Try loose matching if exact match fails
-        if (!mediaFile) {
-             const filename = cleanUri.split('/').pop();
-             if (filename) {
-                 for(const [key, file] of fileMap.entries()) {
-                     if (key.endsWith(filename)) {
-                         mediaFile = file;
-                         break;
-                     }
-                 }
-             }
+    // Basename -> file index, so loose matching is O(1) instead of scanning the whole export per media item.
+    const fileNameIndex = useMemo(() => {
+        const index = new Map<string, File | ZipEntry>();
+        if (!fileMap) return index;
+        for (const [key, file] of fileMap.entries()) {
+            const name = key.split('/').pop();
+            if (name && !index.has(name)) index.set(name, file);
         }
-
-        if (mediaFile) {
-            if (mediaFile instanceof File) {
-                return URL.createObjectURL(mediaFile);
-            } else {
-                // JSZip Object
-                const blob = await mediaFile.async('blob');
-                return URL.createObjectURL(blob);
-            }
-        }
-        return undefined;
+        return index;
     }, [fileMap]);
 
+    const getBlob = useCallback(async (uri: string): Promise<Blob | undefined> => {
+        if (!fileMap) return undefined;
+
+        // Clean URI
+        const cleanUri = uri.replace(/^\.\//, '');
+
+        // Exact match first, then fall back to matching on file name
+        const filename = cleanUri.split('/').pop();
+        const mediaFile = fileMap.get(cleanUri) ?? (filename ? fileNameIndex.get(filename) : undefined);
+        if (!mediaFile) return undefined;
+        return mediaFile instanceof File ? mediaFile : mediaFile.async('blob');
+    }, [fileMap, fileNameIndex]);
+    const mediaLoader = useMediaLoader(getBlob);
+
     const handleReset = () => {
+        mediaLoader.dispose();
         setStatus('idle');
         setErrorMessage('');
         setChats([]);
@@ -245,7 +253,8 @@ const TelegramPage: React.FC<TelegramPageProps> = ({ platform }) => {
                 <TelegramChatViewer 
                     chats={chats} 
                     ownerId={ownerId}
-                    createBlobUrl={createBlobUrl}
+                    exportKey={exportKey}
+                    createBlobUrl={mediaLoader.source}
                     theme={theme}
                     onThemeToggle={handleThemeToggle}
                     onReset={handleReset}
@@ -275,6 +284,8 @@ const TelegramPage: React.FC<TelegramPageProps> = ({ platform }) => {
             />
             <div className="flex-grow flex items-center justify-center">
                 {renderUploadView()}
+                {status === 'idle' && <RecentExports platform="telegram" onOpen={(file) => void processUpload(file)} />}
+                <DropOverlay show={dropping} label="Drop your Telegram export" />
             </div>
             {status !== 'processing' && (
                  <div className="flex-shrink-0 py-6 text-center">

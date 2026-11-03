@@ -19,11 +19,12 @@ Transform Exportium from a "Functional MVP" (v0.0.5) to a "Premium Product" (v0.
 
 ## Phase 2C: Core Functionality (Data Parsing)
 **Objective**: Actually parse the uploaded files.
-- [ ] **Instagram Parser**: Read `messages.json` and render chat view.
-- [ ] **WhatsApp Parser**: Read `_chat.txt` exports.
+- [x] **Instagram Parser**: Read `message_*.json` and render chat view.
+- [x] **WhatsApp Parser**: Read `_chat.txt` exports.
+- [x] **Telegram & Snapchat Parsers**: Read `result.json` / Snapchat exports.
 - [ ] **Local Database**: Use `SQLite` or `PouchDB` to store parsed index (locally).
 
 ## Verification Plan
 1.  **Website**: Public link works, Download button starts `.exe` download.
 2.  **App UI**: Window dragging works smoothly with new custom bar.
-3.  **Functionality**: Dragging a sample JSON file renders a chat list.
+3.  **Functionality**: Importing a sample export renders a chat list.

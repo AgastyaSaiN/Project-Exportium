@@ -1,20 +1,22 @@
 
-import JSZip from 'jszip';
-import { Chat, Message } from './types';
+import { openZip, ZipEntry } from '../../../utils/zipArchive';
+import { Chat } from './types';
+import { parseInWorker } from '../../../utils/parseInWorker';
+import { relativePathOf } from '../../../utils/fileSystem';
 
 export interface ParserResult {
     chats: Chat[];
     ownerId: string;
-    fileMap: Map<string, File | JSZip.JSZipObject>;
+    fileMap: Map<string, File | ZipEntry>;
     rootPath: string;
 }
 
-const isTelegramExportJSON = (json: any): boolean => {
+const isTelegramExportJSON = (json: Record<string, unknown> & { about?: string; chats?: { list?: unknown }; name?: unknown; type?: unknown; messages?: unknown }): boolean => {
     return (
-        (json.about && json.about.includes('Telegram')) || 
-        (json.chats && Array.isArray(json.chats.list)) ||
+        (typeof json.about === 'string' && json.about.includes('Telegram')) || 
+        (!!json.chats && Array.isArray(json.chats.list)) ||
         (json.personal_information !== undefined) ||
-        (json.name && json.type && json.messages) // Single chat export
+        (!!json.name && !!json.type && !!json.messages) // Single chat export
     );
 };
 
@@ -23,7 +25,7 @@ export const parseTelegramArchive = async (
     onProgress: (step: string) => void
 ): Promise<ParserResult> => {
     let resultJsonContent: string = '';
-    const fileMap = new Map<string, File | JSZip.JSZipObject>();
+    const fileMap = new Map<string, File | ZipEntry>();
     let rootPath = '';
     let usedFileName = 'result.json';
 
@@ -31,12 +33,12 @@ export const parseTelegramArchive = async (
     const isZip = isFile && (input.name.toLowerCase().endsWith('.zip') || input.type === 'application/zip');
     const isJson = isFile && input.name.toLowerCase().endsWith('.json');
     // Check for FileList or array-like object of Files
-    const isFileList = input instanceof FileList || (!isFile && (input as any).length !== undefined && (input as any)[0] instanceof File);
+    const isFileList = input instanceof FileList || (!isFile && (input as ArrayLike<File>).length !== undefined && (input as ArrayLike<File>)[0] instanceof File);
 
     // Handle ZIP
     if (isZip) {
         onProgress('Loading ZIP file...');
-        const zip = await JSZip.loadAsync(input as File);
+        const zip = await openZip(input as File);
         
         // Find result.json case-insensitively
         const files = Object.keys(zip.files);
@@ -56,7 +58,7 @@ export const parseTelegramArchive = async (
                              break;
                          }
                      }
-                 } catch (e) {
+                 } catch {
                      // Ignore parse errors for non-target files
                  }
              }
@@ -134,7 +136,7 @@ export const parseTelegramArchive = async (
                              break;
                          }
                     }
-                } catch (e) {
+                } catch {
                     continue;
                 }
             }
@@ -150,7 +152,7 @@ export const parseTelegramArchive = async (
 
         // Determine root path based on webkitRelativePath
         // e.g. "Downloads/Telegram Export/result.json" -> "Downloads/Telegram Export/"
-        const fullPath = (resultFile as any).webkitRelativePath || resultFile.name;
+        const fullPath = relativePathOf(resultFile);
         rootPath = fullPath.includes('/') ? fullPath.substring(0, fullPath.lastIndexOf('/') + 1) : '';
         usedFileName = resultFile.name;
 
@@ -161,7 +163,7 @@ export const parseTelegramArchive = async (
 
         // Build file map
         fileList.forEach(file => {
-            const path = (file as any).webkitRelativePath || file.name;
+            const path = relativePathOf(file);
             if (path.startsWith(rootPath)) {
                 const relativePath = path.substring(rootPath.length);
                 fileMap.set(relativePath, file);
@@ -175,50 +177,7 @@ export const parseTelegramArchive = async (
     }
 
     onProgress('Parsing chats...');
-    let data;
-    try {
-        data = JSON.parse(resultJsonContent);
-    } catch (e) {
-        throw new Error(`Failed to parse '${usedFileName}'. The file might be corrupted.`);
-    }
-
-    if (!data.chats || !data.chats.list) {
-         // Some exports have a flat structure or different root
-         if (data.list && Array.isArray(data.list)) {
-             data.chats = { list: data.list };
-         } else if (data.name && data.messages) {
-             // Single chat export
-             data.chats = { list: [data] };
-         } else {
-             throw new Error(`Invalid Telegram export format in '${usedFileName}'. Could not find chat list.`);
-         }
-    }
-
-    // ID Detection
-    let ownerId = '';
-    const detectedId = data.personal_information?.user_id || data.personal_information?.id || data.id;
-    if (detectedId) {
-        const idStr = String(detectedId);
-        ownerId = idStr.startsWith('user') ? idStr : `user${idStr}`;
-    }
-
-    const chats: Chat[] = data.chats.list
-        .filter((chat: any) => chat.messages && chat.messages.length > 0)
-        .map((chat: any): Chat => {
-            const lastMessage = chat.messages[chat.messages.length - 1];
-            return {
-                id: chat.id,
-                name: chat.name || "Deleted Account",
-                type: chat.type,
-                messages: chat.messages.filter((m: Message) => m.type === 'message'),
-                lastActivity: lastMessage ? new Date(lastMessage.date).getTime() : 0,
-            };
-        })
-        .sort((a: Chat, b: Chat) => b.lastActivity - a.lastActivity);
-
-    if (chats.length === 0) {
-        throw new Error("No conversations found in this export.");
-    }
+    const { chats, ownerId } = await parseInWorker('telegram', { text: resultJsonContent, fileName: usedFileName });
 
     return {
         chats,

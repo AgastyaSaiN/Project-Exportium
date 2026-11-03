@@ -1,15 +1,35 @@
 
-import React, { useState, useMemo, useEffect, useRef } from 'react';
-import JSZip from 'jszip';
-import { InternalChat, InternalMessage, InternalMedia } from './types';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import VirtualList from '../../../components/VirtualList';
+import type { ZipArchive } from '../../../utils/zipArchive';
+import { InternalChat, InternalMessage } from './types';
+import { useMediaLoader } from '../../../utils/mediaLoader';
+import type { MediaSource } from '../../../utils/mediaLoader';
+import LazyMedia from '../../../components/LazyMedia';
+import { LightboxProvider } from '../../../components/Lightbox';
+import type { LightboxItem } from '../../../components/Lightbox';
+import type { VirtualListHandle } from '../../../components/VirtualList';
+import { StarButton, StarProvider } from '../../../components/ChatTools';
+import LibraryPanel from '../../../components/LibraryPanel';
+import type { ToolMessage } from '../../../utils/chatData';
+import { useExportPrefs } from '../../../utils/storage';
+import { useChatShortcuts } from '../../../utils/useChatShortcuts';
+import GlobalSearch from '../../../components/GlobalSearch';
+import type { GlobalHit, GlobalSearchFn } from '../../../components/GlobalSearch';
+import CalendarPopover, { CalendarDaysIcon, dayKey } from '../../../components/CalendarPopover';
+import WallpaperPicker from '../../../components/WallpaperPicker';
+import { resolveWallpaper, storableWallpaper, wallpaperStyle } from '../../../utils/wallpapers';
+
+
+type SnapRow =
+    | { kind: 'date'; key: string; label: string }
+    | { kind: 'message'; key: string; msg: InternalMessage; dayLabel: string };
 
 // Icons
-const SearchIcon = (props: any) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>);
-const ArrowLeftIcon = (props: any) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" /></svg>);
-const PlayIcon = (props: any) => (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}><path fillRule="evenodd" d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z" clipRule="evenodd" /></svg>);
-const PhotoIcon = (props: any) => (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}><path fillRule="evenodd" d="M1.5 6a2.25 2.25 0 012.25-2.25h16.5A2.25 2.25 0 0122.5 6v12a2.25 2.25 0 01-2.25 2.25H3.75A2.25 2.25 0 011.5 18V6zM3 16.06V18c0 .414.336.75.75.75h16.5A.75.75 0 0021 18v-1.94l-2.69-2.689a1.5 1.5 0 00-2.12 0l-.88.879.97.97a.75.75 0 11-1.06 1.06l-5.16-5.159a1.5 1.5 0 00-2.12 0L3 16.061zm10.125-7.81a1.125 1.125 0 112.25 0 1.125 1.125 0 01-2.25 0z" clipRule="evenodd" /></svg>);
-const SettingsIcon = (props: any) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-1.007 1.11-1.226.55-.22 1.156-.22 1.706 0 .55.22 1.02.684 1.11 1.226l.08 1.485a2.5 2.5 0 011.82 2.336 2.5 2.5 0 01-.1 1.026l.42 1.696a2.5 2.5 0 01-2.22 3.097l-1.696-.42a2.5 2.5 0 01-1.026-.1 2.5 2.5 0 01-2.336-1.82l-1.485-.08a2.5 2.5 0 01-3.097-2.22l.42-1.696a2.5 2.5 0 01.1-1.026 2.5 2.5 0 011.82-2.336l1.485.08zm-2.478 8.485a.5.5 0 01.378-.85l.74-.185a2.5 2.5 0 012.336 1.82.5.5 0 01-.85.378l-.185.74a2.5 2.5 0 01-1.82-2.336zM12 15.75a3.75 3.75 0 100-7.5 3.75 3.75 0 000 7.5z" /></svg>);
-const CloseIcon = (props: any) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>);
+const SearchIcon = (props: React.SVGProps<SVGSVGElement>) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>);
+const ArrowLeftIcon = (props: React.SVGProps<SVGSVGElement>) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" /></svg>);
+const SettingsIcon = (props: React.SVGProps<SVGSVGElement>) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-1.007 1.11-1.226.55-.22 1.156-.22 1.706 0 .55.22 1.02.684 1.11 1.226l.08 1.485a2.5 2.5 0 011.82 2.336 2.5 2.5 0 01-.1 1.026l.42 1.696a2.5 2.5 0 01-2.22 3.097l-1.696-.42a2.5 2.5 0 01-1.026-.1 2.5 2.5 0 01-2.336-1.82l-1.485-.08a2.5 2.5 0 01-3.097-2.22l.42-1.696a2.5 2.5 0 01.1-1.026 2.5 2.5 0 011.82-2.336l1.485.08zm-2.478 8.485a.5.5 0 01.378-.85l.74-.185a2.5 2.5 0 012.336 1.82.5.5 0 01-.85.378l-.185.74a2.5 2.5 0 01-1.82-2.336zM12 15.75a3.75 3.75 0 100-7.5 3.75 3.75 0 000 7.5z" /></svg>);
+const CloseIcon = (props: React.SVGProps<SVGSVGElement>) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>);
 
 // Helpers
 const formatTime = (ts: number) => new Date(ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -26,23 +46,7 @@ const Avatar = ({ name }: { name: string }) => {
 };
 
 // Message Component
-const MessageBubble: React.FC<{ msg: InternalMessage, isOwner: boolean, zip: JSZip | null }> = ({ msg, isOwner, zip }) => {
-    const [mediaUrl, setMediaUrl] = useState<string | null>(null);
-
-    useEffect(() => {
-        if (msg.media && zip) {
-            // Load media from zip on demand
-            const loadMedia = async () => {
-                const file = zip.file(msg.media!.uri);
-                if (file) {
-                    const blob = await file.async('blob');
-                    setMediaUrl(URL.createObjectURL(blob));
-                }
-            };
-            loadMedia();
-        }
-    }, [msg.media, zip]);
-
+const MessageBubble: React.FC<{ msg: InternalMessage, isOwner: boolean, media: MediaSource }> = React.memo(({ msg, isOwner, media }) => {
     // Color Coding based on Type
     // SNAP (Red/Purple) vs CHAT (Blue)
     // Saved Messages usually have gray background
@@ -58,24 +62,18 @@ const MessageBubble: React.FC<{ msg: InternalMessage, isOwner: boolean, zip: JSZ
     
     return (
         <div className={`flex w-full mb-2 ${alignClass}`}>
-            <div className={`max-w-[70%] rounded-lg overflow-hidden ${bgColor} ${borderColor} shadow-sm`}>
+            <div className={`group relative max-w-[70%] rounded-lg ${bgColor} ${borderColor} shadow-sm`}>
+                <StarButton id={msg.id} />
                 {msg.media && (
-                    <div className="relative">
-                        {mediaUrl ? (
-                            msg.media.type === 'video' ? (
-                                <video src={mediaUrl} controls className="w-full max-h-80 object-contain bg-black" />
-                            ) : (
-                                <img src={mediaUrl} alt="Snap" className="w-full max-h-80 object-cover" />
-                            )
-                        ) : (
-                            <div className="w-48 h-48 bg-gray-900 flex flex-col items-center justify-center text-gray-500">
-                                {msg.media.type === 'video' ? <PlayIcon className="w-8 h-8" /> : <PhotoIcon className="w-8 h-8" />}
-                                <span className="text-xs mt-2">Loading...</span>
-                            </div>
-                        )}
-                    </div>
+                    <LazyMedia
+                        uri={msg.media.uri}
+                        media={media}
+                        kind={msg.media.type === 'video' ? 'video' : msg.media.type === 'audio' ? 'audio' : 'image'}
+                        className={msg.media.type === 'video' ? 'w-full max-h-80 object-contain bg-black' : 'w-full max-h-80 object-cover'}
+                        alt="Snap"
+                    />
                 )}
-                
+
                 {/* Text Content */}
                 {(msg.content || (!msg.media)) && (
                     <div className="px-3 py-2">
@@ -92,9 +90,9 @@ const MessageBubble: React.FC<{ msg: InternalMessage, isOwner: boolean, zip: JSZ
             </div>
         </div>
     );
-};
+});
 
-const SettingsModal: React.FC<{ isOpen: boolean; onClose: () => void; currentOwner: string; onOwnerChange: (newOwner: string) => void }> = ({ isOpen, onClose, currentOwner, onOwnerChange }) => {
+const SettingsModal: React.FC<{ isOpen: boolean; onClose: () => void; currentOwner: string; onOwnerChange: (newOwner: string) => void; wallpaper: string | null; onWallpaperChange: (value: string | null) => void }> = ({ isOpen, onClose, currentOwner, onOwnerChange, wallpaper, onWallpaperChange }) => {
     const [inputValue, setInputValue] = useState(currentOwner);
 
     if (!isOpen) return null;
@@ -130,6 +128,11 @@ const SettingsModal: React.FC<{ isOpen: boolean; onClose: () => void; currentOwn
                         Messages sent by this username will appear on the right side.
                     </p>
                 </div>
+
+                <div>
+                    <label className="block text-sm font-medium text-gray-400 mb-2">Chat Wallpaper</label>
+                    <WallpaperPicker value={wallpaper} onChange={onWallpaperChange} ringClass="ring-yellow-400" tone="yellow" dark />
+                </div>
             </div>
         </div>
     );
@@ -138,26 +141,25 @@ const SettingsModal: React.FC<{ isOpen: boolean; onClose: () => void; currentOwn
 interface SnapchatChatViewerProps {
     chats: InternalChat[];
     owner: string;
-    zipFile: File | null;
+    zip: ZipArchive | null;
+    exportKey?: string;
     onBack: () => void;
 }
 
-const SnapchatChatViewer: React.FC<SnapchatChatViewerProps> = ({ chats, owner, zipFile, onBack }) => {
+const SnapchatChatViewer: React.FC<SnapchatChatViewerProps> = ({ chats, owner, zip, exportKey, onBack }) => {
+    const [prefs, updatePrefs] = useExportPrefs(exportKey);
+    const [showLibrary, setShowLibrary] = useState(false);
     const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
-    const [zipInstance, setZipInstance] = useState<JSZip | null>(null);
-    const [currentOwner, setCurrentOwner] = useState(owner);
+    const [currentOwner, setCurrentOwner] = useState(prefs.owner?.all ?? owner);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-
-    useEffect(() => {
-        if (zipFile) {
-            JSZip.loadAsync(zipFile).then(setZipInstance);
-        }
-    }, [zipFile]);
+    const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+    const [wallpaper, setWallpaper] = useState<string | null>(resolveWallpaper(prefs.wallpaper?.all));
 
     // Update internal owner state if prop changes (re-upload)
     useEffect(() => {
-        setCurrentOwner(owner);
+        setCurrentOwner(prefs.owner?.all ?? owner);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [owner]);
 
     const filteredChats = useMemo(() => {
@@ -166,13 +168,139 @@ const SnapchatChatViewer: React.FC<SnapchatChatViewerProps> = ({ chats, owner, z
 
     const selectedChat = useMemo(() => chats.find(c => c.id === selectedChatId), [chats, selectedChatId]);
 
+    const getBlob = useCallback(async (uri: string): Promise<Blob | undefined> => {
+        return (await zip?.file(uri)?.async('blob')) ?? undefined;
+    }, [zip]);
+    const mediaLoader = useMediaLoader(getBlob);
+
+    // Flatten into date separators and messages so the virtual list can window over all of them.
+    const { rows, rowIndexByMessageId } = useMemo(() => {
+        const out: SnapRow[] = [];
+        const indexById = new Map<string, number>();
+        let lastDay = -1;
+        let dayLabel = '';
+        for (const msg of selectedChat?.messages ?? []) {
+            // Compare cheap numeric day keys; only format a label when the day actually changes.
+            const d = new Date(msg.timestamp);
+            const day = d.getFullYear() * 10000 + d.getMonth() * 100 + d.getDate();
+            if (day !== lastDay) {
+                dayLabel = formatDate(msg.timestamp);
+                out.push({ kind: 'date', key: `date-${msg.id}`, label: dayLabel });
+                lastDay = day;
+            }
+            indexById.set(msg.id, out.length);
+            out.push({ kind: 'message', key: msg.id, msg, dayLabel });
+        }
+        return { rows: out, rowIndexByMessageId: indexById };
+    }, [selectedChat]);
+
+    const listRef = useRef<VirtualListHandle>(null);
+    const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
+    const [pendingJump, setPendingJump] = useState<string | null>(null);
+
+    const searchAllChats = useCallback<GlobalSearchFn>(async (query, onProgress, signal) => {
+        const needle = query.toLowerCase();
+        const found: GlobalHit[] = [];
+        for (let c = 0; c < chats.length; c++) {
+            onProgress(c, chats.length);
+            const messages = chats[c].messages;
+            for (let i = messages.length - 1; i >= 0 && found.length < 400; i--) {
+                const message = messages[i];
+                if (message.content && message.content.toLowerCase().includes(needle)) {
+                    found.push({ chatId: chats[c].id, chatTitle: chats[c].participant, messageId: message.id, sender: message.sender, ts: message.timestamp, text: message.content });
+                }
+                if (i % 20000 === 0) { await new Promise(resolve => setTimeout(resolve, 0)); if (signal.aborted) return found; }
+            }
+        }
+        onProgress(chats.length, chats.length);
+        return found;
+    }, [chats]);
+
+    const openGlobalHit = (hit: GlobalHit) => {
+        setIsGlobalSearchOpen(false);
+        setShowLibrary(false);
+        setSelectedChatId(hit.chatId);
+        setPendingJump(hit.messageId);
+    };
+    useEffect(() => {
+        if (pendingJump === null || showLibrary) return;
+        const row = rowIndexByMessageId.get(pendingJump);
+        if (row === undefined) return;
+        const frame = requestAnimationFrame(() => { listRef.current?.scrollToIndex(row, 'center'); setPendingJump(null); });
+        return () => cancelAnimationFrame(frame);
+    }, [pendingJump, showLibrary, rowIndexByMessageId]);
+
+    const chatKey = selectedChatId ?? '';
+    const starredIds = useMemo(() => new Set(prefs.stars?.[chatKey] ?? []), [prefs.stars, chatKey]);
+    const toggleStar = useCallback((id: string) => updatePrefs(p => {
+        const current = new Set(p.stars?.[chatKey] ?? []);
+        if (current.has(id)) current.delete(id); else current.add(id);
+        return { ...p, stars: { ...p.stars, [chatKey]: Array.from(current) } };
+    }), [updatePrefs, chatKey]);
+    const toolMessages = useMemo<ToolMessage[]>(() => (selectedChat?.messages ?? []).map(m => ({
+        id: m.id, sender: m.sender, ts: m.timestamp, text: m.content ?? '',
+        files: m.media && m.media.type === 'audio' ? [{ uri: m.media.uri, name: m.media.filename }] : undefined,
+    })), [selectedChat]);
+
+    // Remember where the reader was in each chat, and return there next time.
+    const savedRow = chatKey && prefs.positions?.[chatKey] ? rowIndexByMessageId.get(prefs.positions[chatKey]) : undefined;
+    const rememberPosition = useCallback((rowIndex: number) => {
+        if (!chatKey) return;
+        const row = rows[rowIndex];
+        const next = rows[rowIndex + 1];
+        const id = row?.kind === 'message' ? row.msg.id : next?.kind === 'message' ? next.msg.id : undefined;
+        if (id) updatePrefs(p => (p.positions?.[chatKey] === id ? p : { ...p, positions: { ...p.positions, [chatKey]: id } }));
+    }, [rows, updatePrefs, chatKey]);
+
+    const activeDays = useMemo(() => new Set((selectedChat?.messages ?? []).map(m => dayKey(m.timestamp))), [selectedChat]);
+    const handleDateSelect = (date: Date) => {
+        const start = new Date(date).setHours(0, 0, 0, 0);
+        const messages = selectedChat?.messages ?? [];
+        const target = messages.find(m => m.timestamp >= start) ?? messages[messages.length - 1];
+        if (!target) return;
+        setShowLibrary(false);
+        setPendingJump(target.id);
+    };
+
+    useChatShortcuts({
+        onGoToDate: () => setIsCalendarOpen(true),
+        onGlobalFind: () => setIsGlobalSearchOpen(true),
+        onTop: () => listRef.current?.scrollToTop(),
+        onBottom: () => listRef.current?.scrollToBottom(),
+    }, !showLibrary);
+
+    // Every photo/video in the open chat, oldest first.
+    const chatMediaItems = useMemo<LightboxItem[]>(() => {
+        const items: LightboxItem[] = [];
+        for (const msg of selectedChat?.messages ?? []) {
+            if (msg.media && msg.media.type !== 'audio') items.push({ uri: msg.media.uri, kind: msg.media.type === 'video' ? 'video' : 'image', sender: msg.sender, timestamp: msg.timestamp, ref: msg.id });
+        }
+        return items;
+    }, [selectedChat]);
+
+    const renderRow = (index: number) => {
+        const row = rows[index];
+        if (row.kind === 'date') {
+            return (
+                <div className="flex justify-center my-4">
+                    <span className="bg-gray-800 text-gray-400 text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wider">{row.label}</span>
+                </div>
+            );
+        }
+        return <MessageBubble msg={row.msg} isOwner={row.msg.sender === currentOwner} media={mediaLoader.source} />;
+    };
+
     return (
+        <StarProvider starred={starredIds} onToggle={toggleStar}>
+        <LightboxProvider items={chatMediaItems} media={mediaLoader.source} onShowInChat={(item) => { const row = rowIndexByMessageId.get(item.ref as string); if (row !== undefined) listRef.current?.scrollToIndex(row, 'center'); }}>
         <div className="flex h-screen bg-black text-white overflow-hidden">
             <SettingsModal 
                 isOpen={isSettingsOpen} 
                 onClose={() => setIsSettingsOpen(false)} 
                 currentOwner={currentOwner} 
-                onOwnerChange={setCurrentOwner} 
+                onOwnerChange={(name) => { setCurrentOwner(name); updatePrefs(p => ({ ...p, owner: { ...p.owner, all: name } })); }}
+                wallpaper={wallpaper}
+                onWallpaperChange={(value) => { setWallpaper(value); updatePrefs(p => ({ ...p, wallpaper: { ...p.wallpaper, all: storableWallpaper(value) } })); }}
             />
 
             {/* Sidebar */}
@@ -194,6 +322,9 @@ const SnapchatChatViewer: React.FC<SnapchatChatViewerProps> = ({ chats, owner, z
                         />
                         <SearchIcon className="w-4 h-4 text-gray-500 absolute left-3.5 top-2.5" />
                     </div>
+                    <button type="button" onClick={() => setIsGlobalSearchOpen(true)} className="mt-2 w-full px-3 py-2 rounded-lg border border-gray-700 text-sm text-gray-300 hover:bg-gray-900 transition-colors text-left">
+                        Search all messages <span className="float-right text-xs opacity-60">Ctrl+Shift+F</span>
+                    </button>
                 </div>
                 <div className="flex-1 overflow-y-auto">
                     {filteredChats.map(chat => (
@@ -231,7 +362,20 @@ const SnapchatChatViewer: React.FC<SnapchatChatViewerProps> = ({ chats, owner, z
                                     <h2 className="font-bold">{selectedChat.participant}</h2>
                                 </div>
                             </div>
-                            <button 
+                            <button
+                                onClick={() => setShowLibrary(v => !v)}
+                                className={`ml-auto mr-2 px-3 py-1.5 rounded-full text-sm font-semibold transition-colors ${showLibrary ? 'bg-yellow-400 text-black' : 'bg-gray-800 text-gray-200 hover:bg-gray-700'}`}
+                            >
+                                {showLibrary ? 'Back to chat' : `Library${starredIds.size ? ` (${starredIds.size})` : ''}`}
+                            </button>
+                            <button
+                                onClick={() => setIsCalendarOpen(open => !open)}
+                                aria-label="Jump to date"
+                                className="p-2 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white transition-colors"
+                            >
+                                <CalendarDaysIcon className="w-6 h-6" />
+                            </button>
+                            <button
                                 onClick={() => setIsSettingsOpen(true)}
                                 className="p-2 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white transition-colors"
                             >
@@ -239,34 +383,34 @@ const SnapchatChatViewer: React.FC<SnapchatChatViewerProps> = ({ chats, owner, z
                             </button>
                         </div>
                         
-                        <div className="flex-1 overflow-y-auto p-4 space-y-1">
-                            {/* Messages */}
-                            {(() => {
-                                const messages = [];
-                                let lastDate = '';
-                                
-                                for (const msg of selectedChat.messages) {
-                                    const dateStr = formatDate(msg.timestamp);
-                                    if (dateStr !== lastDate) {
-                                        messages.push(
-                                            <div key={`date-${dateStr}`} className="flex justify-center my-4">
-                                                <span className="bg-gray-800 text-gray-400 text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wider">{dateStr}</span>
-                                            </div>
-                                        );
-                                        lastDate = dateStr;
-                                    }
-                                    messages.push(
-                                        <MessageBubble 
-                                            key={msg.id} 
-                                            msg={msg} 
-                                            isOwner={msg.sender === currentOwner} 
-                                            zip={zipInstance} 
-                                        />
-                                    );
-                                }
-                                return messages;
-                            })()}
-                        </div>
+                        <div className="relative"><CalendarPopover tone="yellow" startAt={selectedChat.messages[selectedChat.messages.length - 1]?.timestamp} isOpen={isCalendarOpen} onClose={() => setIsCalendarOpen(false)} onDateSelect={handleDateSelect} activeDays={activeDays} /></div>
+                        {showLibrary ? (
+                            <div className="flex-1 min-h-0">
+                                <LibraryPanel messages={toolMessages} starred={starredIds} onToggleStar={toggleStar} media={mediaLoader.source} chatTitle={selectedChat.participant} accent="bg-yellow-400"
+                                    onJump={(id) => {
+                                        setShowLibrary(false);
+                                        const row = rowIndexByMessageId.get(id);
+                                        if (row !== undefined) requestAnimationFrame(() => listRef.current?.scrollToIndex(row, 'center'));
+                                    }} />
+                            </div>
+                        ) : (
+                        <VirtualList
+                            ref={listRef}
+                            className="flex-1 p-4"
+                            style={wallpaperStyle(wallpaper, { tone: 'yellow', dark: true })}
+                            count={rows.length}
+                            resetKey={selectedChatId}
+                            startIndex={savedRow ?? null}
+                            onFirstVisibleChange={rememberPosition}
+                            getScrubLabel={(index) => (rows[index].kind === 'date' ? rows[index].label : rows[index].dayLabel)}
+                            getRowKey={(index) => rows[index].key}
+                            renderRow={renderRow}
+                            getStickyLabel={(index) => (rows[index].kind === 'date' ? undefined : rows[index].dayLabel)}
+                            stickyClassName="bg-gray-800/95 text-gray-300 text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wider shadow"
+                            estimateSize={90}
+                            gap={4}
+                        />
+                        )}
                     </>
                 ) : (
                     <div className="flex-1 flex flex-col items-center justify-center text-gray-600">
@@ -280,6 +424,9 @@ const SnapchatChatViewer: React.FC<SnapchatChatViewerProps> = ({ chats, owner, z
                 )}
             </div>
         </div>
+        </LightboxProvider>
+        {isGlobalSearchOpen && <GlobalSearch search={searchAllChats} onOpen={openGlobalHit} onClose={() => setIsGlobalSearchOpen(false)} accent="bg-yellow-400" />}
+        </StarProvider>
     );
 };
 

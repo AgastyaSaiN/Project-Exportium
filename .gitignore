@@ -24,3 +24,30 @@ release
 *.njsproj
 *.sln
 *.sw?
+
+release-e2e
+e2e-output
+
+# Claude Code, local settings and secrets
+.claude/
+CLAUDE.local.md
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+*.pem
+*.key
+
+# Test and build output
+coverage
+test-results
+playwright-report
+*.tsbuildinfo
+
+# Local scratch files and exports used for testing
+scratch/
+tmp/
+*.zip
+Thumbs.db
+Desktop.ini

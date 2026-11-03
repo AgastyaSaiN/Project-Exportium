@@ -1,16 +1,20 @@
 
-import JSZip from 'jszip';
-import { SnapchatChatHistory, RawSnapchatMessage, InternalChat, InternalMessage, InternalMedia } from './types';
+import { openZip, ZipArchive, ZipEntry } from '../../../utils/zipArchive';
+import { InternalChat, InternalMessage, InternalMedia } from './types';
+
+type JsonRecord = Record<string, unknown>;
+
+const isRecord = (value: unknown): value is JsonRecord => !!value && typeof value === 'object' && !Array.isArray(value);
 
 // Helper to get property case-insensitively
-const getProp = (obj: any, ...keys: string[]) => {
-    if (!obj || typeof obj !== 'object') return undefined;
-    
+const getProp = (obj: unknown, ...keys: string[]): unknown => {
+    if (!isRecord(obj)) return undefined;
+
     // First try exact matches
     for (const key of keys) {
         if (obj[key] !== undefined) return obj[key];
     }
-    
+
     // Then try case-insensitive matches
     const objKeys = Object.keys(obj);
     for (const key of keys) {
@@ -18,8 +22,13 @@ const getProp = (obj: any, ...keys: string[]) => {
         const found = objKeys.find(k => k.toLowerCase() === lowerKey);
         if (found) return obj[found];
     }
-    
+
     return undefined;
+};
+
+const getString = (obj: unknown, ...keys: string[]): string | undefined => {
+    const value = getProp(obj, ...keys);
+    return typeof value === 'string' && value !== '' ? value : undefined;
 };
 
 // Helper to parse Snapchat's UTC strings
@@ -53,16 +62,30 @@ const extractDateFromFilename = (filename: string): number | null => {
     return null;
 };
 
+export interface SnapchatStats {
+    totalChats: number;
+    totalMessages: number;
+    totalMedia: number;
+}
+
+export interface SnapchatImport {
+    chats: InternalChat[];
+    owner: string;
+    stats: SnapchatStats;
+    /** The opened archive, reused by the viewer to load attachments on demand. */
+    zip: ZipArchive;
+}
+
 export const parseSnapchatArchive = async (
     file: File, 
     onProgress: (msg: string) => void
-): Promise<{ chats: InternalChat[], owner: string, stats: any }> => {
+): Promise<SnapchatImport> => {
     
     onProgress('Reading zip file...');
-    let zip: JSZip;
+    let zip: ZipArchive;
     try {
-        zip = await JSZip.loadAsync(file);
-    } catch (e) {
+        zip = await openZip(file);
+    } catch {
         throw new Error("Failed to read the ZIP file. Please ensure it is a valid zip archive.");
     }
 
@@ -84,8 +107,8 @@ export const parseSnapchatArchive = async (
 
     // 2. Index Media Files
     onProgress('Indexing media files...');
-    const mediaMap = new Map<string, JSZip.JSZipObject>(); 
-    const mediaTimeMap: { ts: number; file: JSZip.JSZipObject; type: 'image' | 'video' }[] = [];
+    const mediaMap = new Map<string, ZipEntry>(); 
+    const mediaTimeMap: { ts: number; file: ZipEntry; type: 'image' | 'video' }[] = [];
 
     filePaths.forEach(path => {
         const entry = zip.files[path];
@@ -115,30 +138,44 @@ export const parseSnapchatArchive = async (
 
     mediaTimeMap.sort((a, b) => a.ts - b.ts);
 
+    // First media file within 15 seconds of `ts`. The list is sorted, so a binary search finds the
+    // window start instead of scanning every file for every message.
+    const MATCH_WINDOW_MS = 15000;
+    const findMediaNear = (ts: number) => {
+        let low = 0;
+        let high = mediaTimeMap.length;
+        while (low < high) {
+            const mid = (low + high) >> 1;
+            if (mediaTimeMap[mid].ts > ts - MATCH_WINDOW_MS) high = mid; else low = mid + 1;
+        }
+        const candidate = mediaTimeMap[low];
+        return candidate && candidate.ts < ts + MATCH_WINDOW_MS ? candidate : undefined;
+    };
+
     // 3. Parse Messages
     onProgress('Parsing JSON data...');
     const chatHistoryFile = zip.files[chatHistoryPath];
-    let rawData: any;
+    let rawData: unknown;
     
     try {
         const content = await chatHistoryFile.async('string');
         rawData = JSON.parse(content);
-    } catch (e) {
+    } catch {
         throw new Error("Failed to parse 'chat_history.json'. The file might be corrupted.");
     }
 
     // 4. Dynamic Discovery of Message Lists
     // Instead of relying on hardcoded keys, we recursively scan for arrays containing message-like objects
-    const messageLists: { key: string, list: any[], isSaved: boolean }[] = [];
+    const messageLists: { key: string, list: unknown[], isSaved: boolean }[] = [];
 
-    const isMessageLike = (item: any) => {
-        if (!item || typeof item !== 'object') return false;
+    const isMessageLike = (item: unknown) => {
+        if (!isRecord(item)) return false;
         // Check for common message properties
         return (getProp(item, 'From') !== undefined || getProp(item, 'To') !== undefined) && 
                (getProp(item, 'Created') !== undefined || getProp(item, 'Date') !== undefined);
     };
 
-    const scanForMessages = (obj: any, path: string) => {
+    const scanForMessages = (obj: unknown, path: string) => {
         if (!obj || typeof obj !== 'object') return;
 
         // If it's an array, check if it contains messages
@@ -151,10 +188,10 @@ export const parseSnapchatArchive = async (
         }
 
         // Recursively scan object properties
-        for (const key in obj) {
+        for (const [key, value] of Object.entries(obj)) {
             // Avoid scanning into individual messages or huge strings
-            if (typeof obj[key] === 'object') {
-                scanForMessages(obj[key], path ? `${path}.${key}` : key);
+            if (typeof value === 'object') {
+                scanForMessages(value, path ? `${path}.${key}` : key);
             }
         }
     };
@@ -177,11 +214,11 @@ export const parseSnapchatArchive = async (
         
         for (const msg of item.list) {
             if (isSent) {
-                const from = getProp(msg, 'From');
+                const from = getString(msg, 'From');
                 if (from) sentSenders.set(from, (sentSenders.get(from) || 0) + 1);
             }
             if (isReceived) {
-                const to = getProp(msg, 'To');
+                const to = getString(msg, 'To');
                 if (to) receivedRecipients.set(to, (receivedRecipients.get(to) || 0) + 1);
             }
         }
@@ -203,14 +240,14 @@ export const parseSnapchatArchive = async (
     onProgress('Organizing conversations...');
     const chatsMap = new Map<string, InternalChat>();
 
-    const processMessageList = (list: any[], isSaved: boolean) => {
+    const processMessageList = (list: unknown[], isSaved: boolean) => {
         for (const msg of list) {
-            const from = getProp(msg, 'From') || "Unknown";
-            const to = getProp(msg, 'To'); 
-            const created = getProp(msg, 'Created');
-            const mediaTypeRaw = (getProp(msg, 'Media Type') || '').toUpperCase();
-            const textContent = getProp(msg, 'Text') || getProp(msg, 'Content');
-            const mediaRef = getProp(msg, 'Media');
+            const from = getString(msg, 'From') || "Unknown";
+            const to = getString(msg, 'To');
+            const created = getString(msg, 'Created');
+            const mediaTypeRaw = (getString(msg, 'Media Type') || '').toUpperCase();
+            const textContent = getString(msg, 'Text') || getString(msg, 'Content');
+            const mediaRef = getString(msg, 'Media');
 
             // Determine participant
             let participant: string;
@@ -261,7 +298,7 @@ export const parseSnapchatArchive = async (
                 } 
                 // 2. Time-based match (Window of 15 seconds, wider window for safety)
                 if (!linkedMedia) {
-                    const match = mediaTimeMap.find(m => Math.abs(m.ts - timestamp) < 15000); 
+                    const match = findMediaNear(timestamp);
                     if (match) {
                         linkedMedia = {
                             type: match.type,
@@ -311,6 +348,7 @@ export const parseSnapchatArchive = async (
     return {
         chats: validChats,
         owner,
+        zip,
         stats: {
             totalChats: validChats.length,
             totalMessages: validChats.reduce((acc, c) => acc + c.messageCount, 0),

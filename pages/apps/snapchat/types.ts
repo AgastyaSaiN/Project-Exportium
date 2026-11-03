@@ -1,12 +1,12 @@
 
 export interface SnapchatChatHistory {
   // Allow for any keys since structure varies
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface RawSnapchatMessage {
   // Allow for any keys and case variations
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface InternalMessage {

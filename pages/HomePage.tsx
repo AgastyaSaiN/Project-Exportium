@@ -1,39 +1,20 @@
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { PLATFORMS, COMING_SOON_PLATFORMS } from '../constants';
 import PlatformCard from '../components/PlatformCard';
 import LogoIcon from '../components/LogoIcon';
+import AppFooter from '../components/AppFooter';
 
 const HomePage: React.FC = () => {
   const [radius, setRadius] = React.useState(250);
-  const [isStandalone, setIsStandalone] = useState(false);
-
-  useEffect(() => {
-    // Check if running in PWA/Standalone mode
-    const checkStandalone = () => {
-      const isStandaloneMode = window.matchMedia('(display-mode: standalone)').matches || 
-                               (window.navigator as any).standalone === true;
-      setIsStandalone(isStandaloneMode);
-    };
-    
-    checkStandalone();
-    window.addEventListener('resize', checkStandalone);
-    return () => window.removeEventListener('resize', checkStandalone);
-  }, []);
-
   React.useEffect(() => {
+    // The ring of apps must fit beside the "In Development" panel (which sits next to it from 1024px up),
+    // so size it from the width that is actually left, not from fixed breakpoints.
     const updateRadius = () => {
-      if (window.innerWidth >= 1280) {
-        setRadius(280);
-      } else if (window.innerWidth >= 1024) {
-        setRadius(240);
-      } else if (window.innerWidth >= 768) {
-        setRadius(200);
-      } else if (window.innerWidth >= 640) {
-        setRadius(160);
-      } else {
-        setRadius(130);
-      }
+      const width = window.innerWidth;
+      const panel = width >= 1024 ? 320 + 48 : 0;
+      const room = width - panel - 48;
+      setRadius(Math.max(110, Math.min(280, Math.floor((room - 130) / 2))));
     };
 
     updateRadius();
@@ -45,12 +26,12 @@ const HomePage: React.FC = () => {
     <div className="flex flex-col min-h-screen bg-slate-50 dark:bg-slate-900 overflow-hidden relative">
        <div className="absolute inset-0 -z-10 h-full w-full bg-white dark:bg-slate-900 bg-[linear-gradient(to_right,#f0f0f0_1px,transparent_1px),linear-gradient(to_bottom,#f0f0f0_1px,transparent_1px)] dark:bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:6rem_4rem]"><div className="absolute bottom-0 left-0 right-0 top-0 bg-[radial-gradient(circle_800px_at_100%_200px,#d5c5ff,transparent)] dark:bg-[radial-gradient(circle_800px_at_100%_200px,#3f3c5f,transparent)]"></div></div>
       <main className="flex-grow flex flex-col lg:flex-row items-center justify-center p-4 sm:p-6 lg:p-8 relative">
-        <div className="flex-grow flex flex-col items-center justify-center w-full lg:w-auto">
+        <div className="flex-grow flex flex-col items-center justify-center w-full lg:w-auto min-w-0">
             <header className="text-center mb-8 md:mb-12 relative z-10">
-            {isStandalone && (
+            {(
                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-200 dark:bg-slate-800 text-xs font-bold text-slate-600 dark:text-slate-300 mb-4 shadow-sm border border-slate-300 dark:border-slate-700">
                   <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                  Desktop v1.0
+                  Desktop v{__APP_VERSION__}
                </div>
             )}
             <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold text-slate-900 dark:text-white tracking-tight">
@@ -97,7 +78,7 @@ const HomePage: React.FC = () => {
         </div>
 
         {/* Future Development Panel - Hide in Standalone mode for cleaner look, or keep if desired. Keeping for now. */}
-        <div className="w-full lg:w-80 max-w-sm mt-12 lg:mt-0 lg:absolute lg:right-8 top-1/2 lg:-translate-y-1/2">
+        <div className="w-full lg:w-80 lg:flex-shrink-0 lg:ml-12 max-w-sm mt-12 lg:mt-0 relative z-10">
             <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-md rounded-2xl border border-slate-200/80 dark:border-slate-700/80 shadow-xl p-5">
                 <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-4 flex items-center">
                     <span className="relative flex h-3 w-3 mr-3">
@@ -129,6 +110,7 @@ const HomePage: React.FC = () => {
         <p className="text-sm text-slate-500 dark:text-slate-400">
           Privacy First. All data stays on your device.
         </p>
+        <div className="mt-2"><AppFooter /></div>
       </footer>
     </div>
   );

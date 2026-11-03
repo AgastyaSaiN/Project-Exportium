@@ -1,10 +1,19 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import JSZip from 'jszip';
+import { openZip, ZipArchive } from '../../../utils/zipArchive';
 import { Platform } from '../../../constants';
 import InstagramChatViewer from './InstagramChatViewer';
 import { Chat, Message } from './types';
+import { useMediaLoader } from '../../../utils/mediaLoader';
+import { PendingChatData, detectOwnerName, scanChats, loadChatMessagesFromZip, readChatFolder, messageFilePattern } from './parser';
+import { DropOverlay, RecentExports } from '../../../components/ImportExtras';
+import { trackExport } from '../../../utils/recentFiles';
+import { usePersistentState } from '../../../utils/storage';
+import { useFileDrop } from '../../../utils/useFileDrop';
+import { folderExportKey } from '../../../utils/recentFiles';
+import type { GlobalHit, GlobalSearchFn } from '../../../components/GlobalSearch';
+import { parseInWorker } from '../../../utils/parseInWorker';
 
 
 // --- Icon Components ---
@@ -47,29 +56,6 @@ interface InstagramPageProps {
     platform: Platform;
 }
 
-interface PendingChatData {
-    title: string;
-    lastActivity: number;
-    id: string;
-    path: string;
-    participants: { name: string }[];
-    rawMessages: any[];
-    fileMap: Map<string, File>;
-}
-
-
-const fixEncoding = (text: string): string => {
-    if (typeof text !== 'string') return text;
-    try {
-        // Attempt to decode URI component, falling back to original text if it fails
-        // This handles cases like "Répondu à" which becomes "RÃ©pondu Ã "
-        return decodeURIComponent(escape(text));
-    } catch (e) {
-        // This might happen if the string is already correctly encoded
-        return text;
-    }
-};
-
 const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
     const { name, icon: Icon, color } = platform;
     const [status, setStatus] = useState<'idle' | 'processing' | 'error'>('idle');
@@ -77,8 +63,9 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
     const [errorMessage, setErrorMessage] = useState<string>('');
     const [chats, setChats] = useState<Chat[]>([]);
     const [ownerName, setOwnerName] = useState<string>('');
-    const [theme, setTheme] = useState<'light' | 'dark'>('light');
-    const zipRef = useRef<JSZip | null>(null);
+    const [exportKey, setExportKey] = useState<string | undefined>();
+    const [theme, setTheme] = usePersistentState<'light' | 'dark'>('theme', 'light');
+    const zipRef = useRef<ZipArchive | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const folderInputRef = useRef<HTMLInputElement>(null);
 
@@ -96,6 +83,12 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
         setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
     };
 
+    const dropping = useFileDrop((files) => {
+        const file = files.find(f => /\.zip$/i.test(f.name));
+        if (file) void importArchive(file);
+        else { setErrorMessage('Drop your Instagram archive (.zip). For a single chat folder use "Chat Folder".'); setStatus('error'); }
+    }, chats.length === 0 && status !== 'processing' && !participantsForSelection);
+
     const handleSelectArchiveClick = () => {
         fileInputRef.current?.click();
     };
@@ -106,7 +99,12 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
     
     const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
-        if (!file) return;
+        if (file) await importArchive(file);
+        if (event.target) event.target.value = '';
+    };
+
+    const importArchive = async (file: File) => {
+        setExportKey(trackExport('instagram', file));
 
         setStatus('processing');
         setErrorMessage('');
@@ -117,110 +115,22 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
 
         try {
             setProcessingStep('Loading ZIP file...');
-            const zip = await JSZip.loadAsync(file);
+            const zip = await openZip(file);
             zipRef.current = zip;
 
-            // --- Determine Owner Username ---
             setProcessingStep('Identifying user...');
-            let determinedOwnerName: string | null = null;
-            
-            const filenameRegex = /^instagram-(.+?)-\d{4}-\d{2}-\d{2}-/;
-            const match = file.name.match(filenameRegex);
-            if (match && match[1]) {
-                determinedOwnerName = fixEncoding(match[1]);
-            }
-
-            if (!determinedOwnerName) {
-                const findUsernameRecursive = (obj: any): string | null => {
-                    if (!obj || typeof obj !== 'object') return null;
-                    for (const key in obj) {
-                        if (Object.prototype.hasOwnProperty.call(obj, key)) {
-                            const value = obj[key];
-                            if (key.toLowerCase() === 'username' && typeof value === 'string') return value;
-                            const result = findUsernameRecursive(value);
-                            if (result) return result;
-                        }
-                    }
-                    return null;
-                };
-
-                const userInfoFiles = ['account_information/personal_information.json', 'personal_information/personal_information.json'];
-                for (const path of userInfoFiles) {
-                    const file = zip.file(path);
-                    if (file) {
-                        try {
-                            const content = await file.async('string');
-                            const data = JSON.parse(content);
-                            const username = data?.profile_user?.username || findUsernameRecursive(data.profile) || findUsernameRecursive(data);
-                            if (username) {
-                                determinedOwnerName = fixEncoding(username);
-                                break;
-                            }
-                        } catch (e) {
-                             console.warn(`Could not parse user info file: ${path}`, e);
-                        }
-                    }
-                }
-            }
-
+            const determinedOwnerName = await detectOwnerName(zip, file.name);
             if (!determinedOwnerName) {
                 throw new Error("Could not determine your username. Please make sure you've uploaded a complete Instagram data export ZIP file.");
             }
             setOwnerName(determinedOwnerName);
 
-            // --- Scan for conversations (fast) ---
             setProcessingStep('Scanning conversations...');
-            const chatFolders = new Set<string>();
-            
-            const chatManifestFiles = zip.file(/message_1\.json$/);
-
-            chatManifestFiles.forEach(file => {
-                if (file.name.includes('messages/')) {
-                    const pathParts = file.name.split('/');
-                    pathParts.pop();
-                    const folderPath = pathParts.join('/');
-                    if (folderPath) {
-                        chatFolders.add(folderPath);
-                    }
-                }
-            });
-
-            const chatPromises = Array.from(chatFolders).map(async (folderPath): Promise<Chat | null> => {
-                try {
-                    const firstMessageFile = zip.file(`${folderPath}/message_1.json`);
-                    if (!firstMessageFile) return null;
-
-                    const content = await firstMessageFile.async('string');
-                    const chatData = JSON.parse(content);
-
-                    const messageFiles = zip.file(new RegExp(`^${folderPath}/message_\\d+\\.json$`));
-                    let lastTimestamp = 0;
-                    if(chatData.messages && chatData.messages.length > 0) {
-                        lastTimestamp = chatData.messages.reduce((latest: number, msg: any) => Math.max(latest, msg.timestamp_ms), 0);
-                    }
-
-
-                     return {
-                        id: folderPath,
-                        path: folderPath,
-                        title: fixEncoding(chatData.title),
-                        participants: chatData.participants.map((p: any) => ({ name: fixEncoding(p.name) })),
-                        messages: [],
-                        lastActivity: lastTimestamp,
-                    };
-                } catch {
-                    return null;
-                }
-            });
-
-            const scannedChats = (await Promise.all(chatPromises))
-                .filter((c): c is Chat => c !== null && c.lastActivity > 0)
-                .sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0));
-            
+            const scannedChats = await scanChats(zip);
             if (scannedChats.length === 0) {
                 throw new Error("No chat data found. Please check if the archive is a valid Instagram data export and contains a 'messages' folder.");
             }
-            
+
             setChats(scannedChats);
             setStatus('idle');
         
@@ -228,8 +138,6 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
             console.error("Failed to process archive:", error);
             setStatus('error');
             setErrorMessage(error instanceof Error ? error.message : "An unknown error occurred during processing.");
-        } finally {
-             if(event.target) event.target.value = '';
         }
     };
 
@@ -242,51 +150,9 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
         setErrorMessage('');
         setSingleFolderFileMap(null);
         try {
-            const fileList = Array.from(files);
-            const firstPath = (fileList[0] as any).webkitRelativePath;
-            if (!firstPath) {
-                throw new Error("Your browser does not support folder uploads. Please try Chrome, Edge, or Firefox.");
-            }
-            const basePath = firstPath.substring(0, firstPath.indexOf('/') + 1);
-
-            const fileMap = new Map<string, File>();
-            fileList.forEach((file: any) => {
-                const relativePath = file.webkitRelativePath.replace(basePath, '');
-                if (relativePath) fileMap.set(relativePath, file);
-            });
-            
-            const message1File = fileMap.get('message_1.json');
-            if (!message1File) {
-                throw new Error("This doesn't look like a valid Instagram chat folder. Could not find 'message_1.json'.");
-            }
-
-            const content = await message1File.text();
-            const chatData = JSON.parse(content);
-            const participants = chatData.participants.map((p: {name: string}) => fixEncoding(p.name));
-            
-            const messageFileNames = Array.from(fileMap.keys()).filter(k => k.match(/^message_\d+\.json$/));
-            let allMessagesRaw: any[] = [];
-            for (const fileName of messageFileNames) {
-                const file = fileMap.get(fileName);
-                if(file){
-                    const fileContent = await file.text();
-                    const data = JSON.parse(fileContent);
-                    if (data.messages) allMessagesRaw.push(...data.messages);
-                }
-            }
-            if(allMessagesRaw.length === 0) {
-                 throw new Error("No messages found in the provided folder.");
-            }
-
-            setPendingChatData({
-                title: fixEncoding(chatData.title),
-                lastActivity: allMessagesRaw.reduce((latest, msg) => Math.max(latest, msg.timestamp_ms), 0),
-                id: basePath,
-                path: basePath,
-                participants: chatData.participants.map((p: any) => ({ name: fixEncoding(p.name) })),
-                rawMessages: allMessagesRaw,
-                fileMap: fileMap,
-            });
+            setExportKey(folderExportKey('instagram', Array.from(files)));
+            const { pending, participants } = await readChatFolder(Array.from(files));
+            setPendingChatData(pending);
             setParticipantsForSelection(participants);
             setStatus('idle');
 
@@ -306,24 +172,13 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
         setOwnerName(name);
 
         try {
-            const { rawMessages, fileMap, ...chatInfo } = pendingChatData;
+            const { messages, fileMap, ...chatInfo } = pendingChatData;
             
             setSingleFolderFileMap(fileMap);
 
-            const processedMessages: Message[] = rawMessages
-                .map((msg: any, index: number): Message => ({
-                    id: `${msg.timestamp_ms}-${index}`,
-                    sender_name: fixEncoding(msg.sender_name),
-                    timestamp_ms: msg.timestamp_ms,
-                    content: msg.content ? fixEncoding(msg.content) : undefined,
-                    photos: msg.photos,
-                    videos: msg.videos,
-                }))
-                .sort((a, b) => a.timestamp_ms - b.timestamp_ms);
-            
             const finalChat: Chat = {
                 ...chatInfo,
-                messages: processedMessages,
+                messages,
             };
 
             setChats([finalChat]);
@@ -343,63 +198,46 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
     const loadChatMessages = useCallback(async (chatPath: string): Promise<Message[]> => {
         if (!zipRef.current) return [];
         
-        const messageFiles = zipRef.current.file(new RegExp(`^${chatPath}/message_\\d+\\.json$`));
-        if (!messageFiles || messageFiles.length === 0) return [];
-
-        try {
-            let allMessagesRaw: any[] = [];
-            
-            for (const file of messageFiles) {
-                const content = await file.async('string');
-                const chatData = JSON.parse(content);
-                if (chatData.messages) {
-                    allMessagesRaw.push(...chatData.messages);
-                }
-            }
-            
-            const processedMessages: Message[] = allMessagesRaw.map((msg: any, index: number) => ({
-                id: `${msg.timestamp_ms}-${index}`,
-                sender_name: fixEncoding(msg.sender_name),
-                timestamp_ms: msg.timestamp_ms,
-                content: msg.content ? fixEncoding(msg.content) : undefined,
-                photos: msg.photos,
-                videos: msg.videos,
-            }));
-            
-            return processedMessages.sort((a, b) => a.timestamp_ms - b.timestamp_ms);
-
-        } catch (error) {
-            console.error(`Failed to load messages for ${chatPath}:`, error);
-            throw new Error("Could not load conversation. The file might be corrupt.");
-        }
+        return loadChatMessagesFromZip(zipRef.current, chatPath);
     }, []);
 
-    const createBlobUrl = useCallback(async (uri: string): Promise<string | undefined> => {
+    const getBlob = useCallback(async (uri: string): Promise<Blob | undefined> => {
         if (zipRef.current) {
-            const mediaFile = zipRef.current.file(uri);
-            if (mediaFile) {
-                const blob = await mediaFile.async('blob');
-                return URL.createObjectURL(blob);
-            }
-        } else if (singleFolderFileMap) {
-            let mediaFile = singleFolderFileMap.get(uri);
-            if (mediaFile) {
-                return URL.createObjectURL(mediaFile);
-            }
-            for (const key of singleFolderFileMap.keys()) {
-                if (uri.endsWith(key)) {
-                    mediaFile = singleFolderFileMap.get(key);
-                    if (mediaFile) {
-                        return URL.createObjectURL(mediaFile);
-                    }
-                }
+            return (await zipRef.current.file(uri)?.async('blob')) ?? undefined;
+        }
+        if (singleFolderFileMap) {
+            const direct = singleFolderFileMap.get(uri);
+            if (direct) return direct;
+            for (const [key, file] of singleFolderFileMap) {
+                if (uri.endsWith(key)) return file;
             }
         }
         console.warn(`Could not find media for URI: ${uri}`);
         return undefined;
     }, [singleFolderFileMap]);
 
+    const mediaLoader = useMediaLoader(getBlob);
+
+    // Reads every conversation's message files and searches their text in the background worker.
+    const searchAllChats = useCallback<GlobalSearchFn>(async (query, onProgress, signal) => {
+        const zip = zipRef.current;
+        if (!zip) return [];
+        const found: GlobalHit[] = [];
+        for (let i = 0; i < chats.length; i++) {
+            if (signal.aborted || found.length >= 400) break;
+            onProgress(i, chats.length);
+            const files = zip.file(messageFilePattern(chats[i].path));
+            if (files.length === 0) continue;
+            const texts = await Promise.all(files.map(file => file.async('string')));
+            const hits = await parseInWorker('instagramSearch', { texts, query, limit: 60 });
+            for (const hit of hits) found.push({ chatId: chats[i].id, chatTitle: chats[i].title, messageId: hit.id, sender: hit.sender, ts: hit.ts, text: hit.text });
+        }
+        onProgress(chats.length, chats.length);
+        return found;
+    }, [chats]);
+
     const handleReset = () => {
+        mediaLoader.dispose();
         setStatus('idle');
         setErrorMessage('');
         setChats([]);
@@ -532,9 +370,9 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
                 <main className="flex-grow overflow-hidden">
                      <InstagramChatViewer 
                         chats={chats} 
-                        ownerName={ownerName} 
+                        ownerName={ownerName} exportKey={exportKey} onSearchAll={zipRef.current ? searchAllChats : undefined} 
                         onLoadMessages={loadChatMessages} 
-                        createBlobUrl={createBlobUrl}
+                        createBlobUrl={mediaLoader.source}
                         theme={theme}
                         onThemeToggle={handleThemeToggle}
                     />
@@ -564,6 +402,8 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
             />
             <div className="flex-grow flex items-center justify-center">
                 {renderUploadView()}
+                {status === 'idle' && !participantsForSelection && <RecentExports platform="instagram" onOpen={(file) => void importArchive(file)} />}
+                <DropOverlay show={dropping} label="Drop your Instagram archive" />
             </div>
             {status !== 'processing' && !participantsForSelection && (
                  <div className="flex-shrink-0 py-6 text-center">

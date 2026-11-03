@@ -1,11 +1,19 @@
 
-import React from 'react';
+import React, { Suspense } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { PLATFORMS } from '../constants';
-import SnapchatPage from './apps/snapchat/SnapchatPage';
-import InstagramPage from './apps/instagram/InstagramPage';
-import WhatsAppPage from './apps/whatsapp/WhatsAppPage';
-import TelegramPage from './apps/telegram/TelegramPage';
+
+// Each importer (and its heavy dependencies like JSZip) loads only when opened.
+const SnapchatPage = React.lazy(() => import('./apps/snapchat/SnapchatPage'));
+const InstagramPage = React.lazy(() => import('./apps/instagram/InstagramPage'));
+const WhatsAppPage = React.lazy(() => import('./apps/whatsapp/WhatsAppPage'));
+const TelegramPage = React.lazy(() => import('./apps/telegram/TelegramPage'));
+
+const PageLoader: React.FC = () => (
+    <div className="flex items-center justify-center min-h-screen">
+        <div className="w-10 h-10 border-4 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
+    </div>
+);
 
 
 const ArrowLeftIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
@@ -37,16 +45,16 @@ const AppPage: React.FC = () => {
 
     // Render specific component based on the platform slug
     if (platform.slug === 'snapchat') {
-        return <SnapchatPage platform={platform} />;
+        return <Suspense fallback={<PageLoader />}><SnapchatPage platform={platform} /></Suspense>;
     }
     if (platform.slug === 'instagram') {
-        return <InstagramPage platform={platform} />;
+        return <Suspense fallback={<PageLoader />}><InstagramPage platform={platform} /></Suspense>;
     }
     if (platform.slug === 'whatsapp') {
-        return <WhatsAppPage platform={platform} />;
+        return <Suspense fallback={<PageLoader />}><WhatsAppPage platform={platform} /></Suspense>;
     }
     if (platform.slug === 'telegram') {
-        return <TelegramPage platform={platform} />;
+        return <Suspense fallback={<PageLoader />}><TelegramPage platform={platform} /></Suspense>;
     }
 
 

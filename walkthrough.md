@@ -17,10 +17,11 @@ When you open the app, you see the "Privacy Grid".
 - **Connection**: Since this is "Offline Only", you do not "login". Instead, you import data files.
 
 ### 2. Importing Data
-*(Not yet implemented in v0.0.5 UI, coming in v0.1.0)*
-- Click on an app icon (e.g., "Instagram").
-- Drag and drop your `.zip` or `.json` export file into the drop zone.
-- Exportium parses the file instantly.
+- Click on an app icon (Instagram, WhatsApp, Telegram or Snapchat).
+- Choose your export: a `.zip` archive, or an unzipped chat folder (Instagram and Telegram).
+- Pick which participant is you so messages align correctly.
+- Large archives are fine: ZIPs are read on demand, so multi-GB exports open without loading them into memory, and chats with hundreds of thousands of messages scroll smoothly.
+- Photos in chats are shown as screen-sized previews to save memory; use the expand button in the Media tab to open the original.
 
 ### 3. Browsing
 - Click "View Archives" to see your chats.

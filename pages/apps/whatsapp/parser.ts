@@ -1,164 +1,176 @@
+import { Chat, Message, OmittedKind } from './types';
 
-import { Chat, Message, Photo, Video, Audio } from './types';
+export type DateOrder = 'dmy' | 'mdy' | 'ymd';
 
-// Regex to capture a message with an author. Handles different timestamp formats and separators.
-const MESSAGE_WITH_AUTHOR_REGEX = /^\[?(\d{1,2}[./]\d{1,2}[./]\d{2,4}),?\s(\d{1,2}:\d{2}(?::\d{2})?(?:\s[AaPp][Mm])?)\]?(?:\s-\s|\s)([^:]+?):\s([\s\S]+)/;
-// Regex for lines that have a timestamp but no author, typically system messages.
-const MESSAGE_WITHOUT_AUTHOR_REGEX = /^\[?(\d{1,2}[./]\d{1,2}[./]\d{2,4}),?\s(\d{1,2}:\d{2}(?::\d{2})?(?:\s[AaPp][Mm])?)\]?(?:\s-\s|\s)([\s\S]+)/;
-// Regex for message continuations on new lines.
-const CONTINUATION_REGEX = /^(?!\[?\d{1,2}[./]\d{1,2}[./]\d{2,4},?)/;
+/**
+ * One header line: "12/03/2023, 10:16 - ", "[12/03/2023, 10:16:05] ", "2023-03-12 22:16 - ", "3/14/23, 1:30 PM - ".
+ * Day/month/year are captured as three numbers; which is which is decided once per file (see detectDateOrder).
+ */
+const HEADER = /^\[?(\d{1,4})[./-](\d{1,2})[./-](\d{1,4}),?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s?([AaPp])\.?\s?[Mm]\.?)?\]?\s*(?:-\s*)?([\s\S]*)$/;
+/** Characters WhatsApp sprinkles in (LTR marks, narrow no-break spaces from iOS 17). */
+const INVISIBLE_PREFIX = /^[\u200e\u200f\u202a-\u202e\ufeff]+/;
+const ODD_SPACES = /[\u202f\u00a0]/g;
+const CONTINUATION_HEADER = /^\[?\d{1,4}[./-]\d{1,2}[./-]\d{1,4},?\s+\d{1,2}:\d{2}/;
 
-// Media attachment patterns for both Android and iOS.
-const MEDIA_ATTACHED_REGEX = /([\w\s-]+\.(?:jpg|jpeg|png|webp|gif|mp4|mov|avi|mkv|opus|m4a|mp3|ogg|amr))\s*\(file attached\)/;
-const MEDIA_ATTACHED_IOS_REGEX = /<attached:\s*(.+?)>/; // Made more permissive to catch files with spaces/brackets
-const MEDIA_OMITTED_REGEX = /<media omitted>/i;
+// Attachments, in any of WhatsApp's languages: Android "IMG-1.jpg (file attached)" / "(Datei angehängt)", iOS "<attached: x>" / "<Anhang: x>".
+const ANDROID_ATTACHED = /^([^\n<>]+?\.[A-Za-z0-9]{2,5})\s*\((?:[^()\n]{3,40})\)\s*([\s\S]*)$/;
+const IOS_ATTACHED = /^<[^:>\n]{2,30}:\s*([^>\n]+\.[A-Za-z0-9]{2,5})\s*>\s*([\s\S]*)$/;
+const OMITTED_ANGLE = /^<[^>]*(omitted|ausgeschlossen|omitido|omis|omesso|omitida|weggelaten|utelatt|pominięt|пропущен)[^>]*>$/i;
+const OMITTED_WORDS = /^(image|photo|video|audio|sticker|gif|document|contact card|voice message|bild|vidéo|imagen)\s+(omitted|weggelassen|omitido|omis)$/i;
 
+const IMAGE = /\.(jpe?g|png|webp|gif|heic|heif|bmp)$/i;
+const VIDEO = /\.(mp4|mov|avi|mkv|3gp|webm|m4v)$/i;
+const AUDIO = /\.(opus|m4a|mp3|ogg|amr|wav|aac|oga)$/i;
 
-const isImage = (filename: string) => /\.(jpg|jpeg|png|webp|gif)$/i.test(filename);
-const isVideo = (filename: string) => /\.(mp4|mov|avi|mkv)$/i.test(filename);
-const isAudio = (filename: string) => /\.(opus|m4a|mp3|ogg|amr|wav)$/i.test(filename);
-
-const parseTimestamp = (dateStr: string, timeStr: string): number => {
-    const cleanDateStr = dateStr.replace(/\./g, '/');
-    const dateParts = cleanDateStr.split('/').map(part => parseInt(part, 10));
-    let day: number, month: number, year: number;
-
-    // Try to smartly guess date format (DMY vs MDY)
-    if (dateParts[0] > 12 && dateParts[1] <= 12) { // DD/MM/YY
-        day = dateParts[0]; month = dateParts[1] - 1; year = dateParts[2];
-    } else if (dateParts[0] <= 12 && dateParts[1] > 12) { // MM/DD/YY
-        day = dateParts[1]; month = dateParts[0] - 1; year = dateParts[2];
-    } else { // Ambiguous (e.g., 01/02/2023), default to DMY as it's more common globally
-        day = dateParts[0]; month = dateParts[1] - 1; year = dateParts[2];
-    }
-
-    if (year < 100) {
-        year += 2000;
-    }
-    
-    let hour = 0, minute = 0, second = 0;
-    const timeLower = timeStr.toLowerCase();
-    const isPm = timeLower.includes('pm');
-    const isAm = timeLower.includes('am');
-    const timeClean = timeLower.replace(/\s*(am|pm)/, '').trim();
-    const timeParts = timeClean.split(':').map(part => parseInt(part, 10));
-
-    if (timeParts.length >= 2) {
-        hour = timeParts[0];
-        minute = timeParts[1];
-        second = timeParts[2] || 0;
-    }
-
-    if (isPm && hour < 12) {
-        hour += 12;
-    }
-    if (isAm && hour === 12) { // Handle 12 AM (midnight)
-        hour = 0;
-    }
-    
-    return new Date(year, month, day, hour, minute, second).getTime();
+const omittedKind = (text: string): OmittedKind | null => {
+    const trimmed = text.replace(INVISIBLE_PREFIX, '').trim();
+    if (!OMITTED_ANGLE.test(trimmed) && !OMITTED_WORDS.test(trimmed)) return null;
+    if (/image|photo|bild|imagen/i.test(trimmed)) return 'photo';
+    if (/video|vidéo/i.test(trimmed)) return 'video';
+    if (/audio|voice/i.test(trimmed)) return 'audio';
+    if (/sticker/i.test(trimmed)) return 'sticker';
+    if (/gif/i.test(trimmed)) return 'photo';
+    if (/document|contact/i.test(trimmed)) return 'document';
+    return 'media';
 };
 
-export interface ParserProgress {
-    type: 'progress';
-    processed: number;
-    total: number;
+interface Header {
+    a: number; b: number; c: number;
+    hour: number; minute: number; second: number;
+    meridiem: string | null;
+    rest: string;
 }
 
-export interface ParserComplete {
-    type: 'complete';
-    chat: Omit<Chat, 'fileMap'>;
+const readHeader = (line: string): Header | null => {
+    const match = line.match(HEADER);
+    if (!match) return null;
+    return {
+        a: parseInt(match[1], 10), b: parseInt(match[2], 10), c: parseInt(match[3], 10),
+        hour: parseInt(match[4], 10), minute: parseInt(match[5], 10), second: match[6] ? parseInt(match[6], 10) : 0,
+        meridiem: match[7] ? match[7].toLowerCase() : null,
+        rest: match[8],
+    };
+};
+
+const clean = (rawLine: string) => rawLine.replace(ODD_SPACES, ' ').replace(INVISIBLE_PREFIX, '').replace(/\r$/, '');
+
+export interface DateFormatGuess {
+    order: DateOrder;
+    /** True when nothing in the file settles it (every day and month is 12 or less). */
+    ambiguous: boolean;
 }
 
-export type ParserResult = ParserProgress | ParserComplete;
+/**
+ * Works out which of day / month / year comes first by looking at every header in the file, not
+ * line by line: one "14/03" anywhere proves day-first for the whole chat.
+ */
+export const detectDateOrder = (lines: string[]): DateFormatGuess => {
+    let yearFirst = 0, aOver12 = 0, bOver12 = 0, headers = 0;
+    for (const raw of lines) {
+        const header = readHeader(clean(raw));
+        if (!header) continue;
+        headers++;
+        if (header.a > 31) { yearFirst++; if (header.c > 12) aOver12++; continue; }
+        if (header.a > 12) aOver12++;
+        if (header.b > 12) bOver12++;
+    }
+    if (headers > 0 && yearFirst > headers / 2) return { order: 'ymd', ambiguous: false };
+    if (aOver12 > 0 && bOver12 === 0) return { order: 'dmy', ambiguous: false };
+    if (bOver12 > 0 && aOver12 === 0) return { order: 'mdy', ambiguous: false };
+    if (aOver12 > 0 && bOver12 > 0) return { order: aOver12 >= bOver12 ? 'dmy' : 'mdy', ambiguous: false };
+    return { order: 'dmy', ambiguous: true };
+};
 
+const toTimestamp = (h: Header, order: DateOrder): number => {
+    let day: number, month: number, year: number;
+    if (order === 'ymd') { year = h.a; month = h.b; day = h.c; }
+    else if (order === 'mdy') { month = h.a; day = h.b; year = h.c; }
+    else { day = h.a; month = h.b; year = h.c; }
+    // A line that cannot be valid in the chosen order (month 14) is read the other way round.
+    if (month > 12 && day <= 12) { [day, month] = [month, day]; }
+    if (year < 100) year += 2000;
 
-export async function* parseWhatsAppChat(fileContent: string, fileName: string): AsyncGenerator<ParserResult> {
+    let hour = h.hour;
+    if (h.meridiem === 'p' && hour < 12) hour += 12;
+    if (h.meridiem === 'a' && hour === 12) hour = 0;
+    return new Date(year, month - 1, day, hour, h.minute, h.second).getTime();
+};
+
+export type ParsedChat = Omit<Chat, 'fileMap'>;
+
+export interface ParseOptions {
+    /** Force a date order instead of detecting it. */
+    dateOrder?: DateOrder;
+}
+
+/**
+ * Parses the text of a WhatsApp "_chat.txt" export. Pure and synchronous: it runs inside a
+ * Web Worker (see workers/handlers.ts), so a 100k-line chat never blocks the window.
+ */
+export function parseWhatsAppChat(
+    fileContent: string,
+    fileName: string,
+    onProgress?: (processed: number, total: number) => void,
+    options: ParseOptions = {}
+): ParsedChat {
     const lines = fileContent.split('\n');
     const totalLines = lines.length;
+    const guess = detectDateOrder(lines);
+    const order = options.dateOrder ?? guess.order;
     const messages: Message[] = [];
     const participants = new Set<string>();
     let lastMessage: Message | null = null;
 
     for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
+        const line = clean(lines[i]);
         if (!line.trim()) continue;
+        if (onProgress && i > 0 && i % 5000 === 0) onProgress(i, totalLines);
 
-        if (i > 0 && i % 1000 === 0) {
-            // Yield progress and give the main thread a break
-            yield { type: 'progress', processed: i, total: totalLines };
-            await new Promise(resolve => setTimeout(resolve, 0));
+        const header = readHeader(line);
+        if (!header) {
+            // Not a header: the continuation of the previous message (a multi-line text).
+            if (lastMessage && lastMessage.type === 'message' && !CONTINUATION_HEADER.test(line)) {
+                lastMessage.content += `\n${line.trim()}`;
+            }
+            continue;
         }
 
-        const authorMatch = line.match(MESSAGE_WITH_AUTHOR_REGEX);
-        const systemMatch = !authorMatch ? line.match(MESSAGE_WITHOUT_AUTHOR_REGEX) : null;
-        
-        if (authorMatch) {
-            const [, dateStr, timeStr, sender, rawContent] = authorMatch;
-            const content = rawContent.trim();
-            const timestamp = parseTimestamp(dateStr, timeStr);
-            
-            if (content === '‎' || MEDIA_OMITTED_REGEX.test(content)) {
-                lastMessage = null; 
-                continue;
-            }
-            
-            participants.add(sender.trim());
+        const timestamp = toTimestamp(header, order);
+        const authored = header.rest.match(/^([^:\n]{1,80}?):\s([\s\S]*)$/);
 
-            let photo: Photo | undefined;
-            let video: Video | undefined;
-            let audio: Audio | undefined;
-            let messageContent = content;
-
-            const mediaMatch = content.match(MEDIA_ATTACHED_REGEX) || content.match(MEDIA_ATTACHED_IOS_REGEX);
-            if (mediaMatch) {
-                const filename = mediaMatch[1].trim();
-                if (isImage(filename)) {
-                    photo = { uri: filename };
-                } else if (isVideo(filename)) {
-                    video = { uri: filename };
-                } else if (isAudio(filename)) {
-                    audio = { uri: filename };
-                }
-                
-                messageContent = content.replace(mediaMatch[0], '').trim();
-                if (!messageContent) {
-                   if (photo) messageContent = '📷 Photo';
-                   else if (video) messageContent = '📹 Video';
-                   else if (audio) messageContent = '🎤 Voice Message';
-                }
-            }
-            
-            const newMessage: Message = {
-                id: `${timestamp}-${messages.length}`,
-                type: 'message',
-                sender_name: sender.trim(),
-                timestamp_ms: timestamp,
-                content: messageContent,
-                photo,
-                video,
-                audio
-            };
-
-            messages.push(newMessage);
-            lastMessage = newMessage;
-
-        } else if (systemMatch) {
-             const [, dateStr, timeStr, content] = systemMatch;
-             const timestamp = parseTimestamp(dateStr, timeStr);
-             const newMessage: Message = {
-                id: `${timestamp}-${messages.length}`,
-                type: 'system',
-                sender_name: null,
-                timestamp_ms: timestamp,
-                content: content.trim(),
-             };
-             messages.push(newMessage);
-             lastMessage = null;
-
-        } else if (lastMessage && lastMessage.type === 'message' && line.match(CONTINUATION_REGEX) && line.trim()) {
-            lastMessage.content += `\n${line.trim()}`;
+        if (!authored) {
+            const text = header.rest.trim();
+            if (!text) continue;
+            messages.push({ id: `${timestamp}-${messages.length}`, type: 'system', sender_name: null, timestamp_ms: timestamp, content: text });
+            lastMessage = null;
+            continue;
         }
+
+        const sender = authored[1].trim();
+        const body = authored[2].trim();
+        participants.add(sender);
+
+        const message: Message = { id: `${timestamp}-${messages.length}`, type: 'message', sender_name: sender, timestamp_ms: timestamp, content: body };
+
+        const omitted = omittedKind(body);
+        if (omitted) {
+            message.omitted = omitted;
+            message.content = '';
+        } else {
+            const attached = body.match(IOS_ATTACHED) || body.match(ANDROID_ATTACHED);
+            if (attached) {
+                const filename = attached[1].trim().replace(INVISIBLE_PREFIX, '');
+                const caption = (attached[2] ?? '').trim();
+                if (IMAGE.test(filename)) message.photo = { uri: filename };
+                else if (VIDEO.test(filename)) message.video = { uri: filename };
+                else if (AUDIO.test(filename)) message.audio = { uri: filename };
+                else message.document = { uri: filename, name: filename.split('/').pop() || filename };
+                message.content = caption;
+            }
+        }
+
+        messages.push(message);
+        lastMessage = message;
     }
 
     if (messages.length === 0) {
@@ -170,14 +182,13 @@ export async function* parseWhatsAppChat(fileContent: string, fileName: string):
         .replace(/\.zip$/, "")
         .replace(/\.txt$/, "");
 
-    yield {
-        type: 'complete',
-        chat: {
-            id: fileName,
-            title,
-            participants: Array.from(participants).map(name => ({ name })),
-            messages,
-            lastActivity: messages[messages.length - 1]?.timestamp_ms || Date.now(),
-        }
+    return {
+        id: fileName,
+        title,
+        participants: Array.from(participants).map(name => ({ name })),
+        messages,
+        lastActivity: messages[messages.length - 1]?.timestamp_ms || Date.now(),
+        dateOrder: order,
+        dateOrderAmbiguous: guess.ambiguous && !options.dateOrder,
     };
 }

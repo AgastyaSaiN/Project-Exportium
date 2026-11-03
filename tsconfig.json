@@ -13,11 +13,6 @@
     "types": [
       "node"
     ],
-    "include": [
-      "src/**/*",
-      "assets/**/*",
-      "declarations.d.ts"
-    ],
     "moduleResolution": "bundler",
     "isolatedModules": true,
     "moduleDetection": "force",
@@ -30,5 +25,20 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "include": [
+    "*.ts",
+    "*.tsx",
+    "components/**/*",
+    "pages/**/*",
+    "declarations.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "dist-electron",
+    "release",
+    "electron",
+    "vite.config.ts"
+  ]
 }

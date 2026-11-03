@@ -25,6 +25,12 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
+      - name: Lint, typecheck and test
+        run: |
+          npm run lint
+          npm run typecheck
+          npm test
+
       # In case you have any build steps for React (vite build is handled by electron-builder script usually, 
       # but ensuring it runs is good practice if separated). 
       # Our script "electron:build" does "tsc && vite build && electron-builder"
@@ -32,4 +38,10 @@ jobs:
       - name: Build & Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # A tag with a suffix (v0.0.7-beta.1) publishes as a pre-release: installed apps ignore it,
+          # so it can be tried on a spare PC before the real tag goes out.
+          EP_PRE_RELEASE: ${{ contains(github.ref_name, '-') }}
+          # Uncomment once a code-signing certificate is added as repository secrets:
+          # CSC_LINK: ${{ secrets.CSC_LINK }}
+          # CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
         run: npm run electron:build -- --publish always

@@ -1,29 +1,14 @@
-
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import './index.css';
 import App from './App';
 
-// Register Service Worker for PWA support
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
-      .then(registration => {
-        console.log('App is ready for desktop installation. Scope:', registration.scope);
-      })
-      .catch(error => {
-        console.warn('Service worker registration failed:', error);
-      });
-      
-    // Refresh page if the service worker changes (ensures user is on latest version)
-    let refreshing = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (!refreshing) {
-        refreshing = true;
-        window.location.reload();
-      }
-    });
-  });
-}
+// Forward unexpected renderer errors to the main-process log file (no-op outside Electron).
+const reportError = (message: string, detail?: string) => {
+  window.electronAPI?.logError(message, detail);
+};
+window.addEventListener('error', (e) => reportError(e.message, e.error?.stack));
+window.addEventListener('unhandledrejection', (e) => reportError('Unhandled rejection', String((e.reason as Error | undefined)?.stack ?? e.reason)));
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

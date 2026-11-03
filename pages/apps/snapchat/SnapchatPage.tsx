@@ -1,28 +1,33 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Platform } from '../../../constants';
-import { parseSnapchatArchive } from './parser';
+import { parseSnapchatArchive, SnapchatStats } from './parser';
+import type { ZipArchive } from '../../../utils/zipArchive';
 import { InternalChat } from './types';
 import SnapchatChatViewer from './SnapchatChatViewer';
+import { DropOverlay, RecentExports } from '../../../components/ImportExtras';
+import { trackExport } from '../../../utils/recentFiles';
+import { useFileDrop } from '../../../utils/useFileDrop';
 
 // Icons
-const ArrowLeftIcon = (props: any) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" /></svg>);
-const CloudArrowUpIcon = (props: any) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" /></svg>);
-const CheckBadgeIcon = (props: any) => (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}><path fillRule="evenodd" d="M8.603 3.799A4.49 4.49 0 0112 2.25c1.357 0 2.573.6 3.397 1.549a4.49 4.49 0 013.498 1.307 4.491 4.491 0 011.307 3.497A4.49 4.49 0 0121.75 12a4.49 4.49 0 01-1.549 3.397 4.491 4.491 0 01-1.307 3.497 4.491 4.491 0 01-3.497 1.307A4.49 4.49 0 0112 21.75a4.49 4.49 0 01-3.397-1.549 4.49 4.49 0 01-3.498-1.306 4.491 4.491 0 01-1.307-3.498A4.49 4.49 0 012.25 12c0-1.357.6-2.573 1.549-3.397a4.49 4.49 0 011.307-3.497 4.491 4.491 0 013.497-1.307zm4.45 6.45l-3.5 3.5a.75.75 0 01-1.06 0l-1.5-1.5a.75.75 0 111.06-1.06l.97.97 2.97-2.97a.75.75 0 111.06 1.06z" clipRule="evenodd" /></svg>);
-const GhostIcon = (props: any) => (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}><path d="M12.002 2.006C7.584 2.006 4 5.592 4 10.005v.553c0 3.328 1.463 6.324 3.82 8.256.002.002.004.004.006.005a.707.707 0 00.708-.002c.22-.16.37-.41.37-.68V16.5c0-.414.336-.75.75-.75h6.69c.414 0 .75.336.75.75v1.64c0 .268.15.52.37.68.002.001.003.003.005.004a.707.707 0 00.708 0c2.357-1.933 3.82-4.928 3.82-8.256v-.553c0-4.413-3.584-8-7.998-8zM9.001 9.505c-.828 0-1.5-.895-1.5-2s.672-2 1.5-2 1.5.895 1.5 2-.672 2-1.5 2zm6 0c-.828 0-1.5-.895-1.5-2s.672-2 1.5-2 1.5.895 1.5 2-.672 2-1.5 2z" /></svg>);
+const ArrowLeftIcon = (props: React.SVGProps<SVGSVGElement>) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" /></svg>);
+const CloudArrowUpIcon = (props: React.SVGProps<SVGSVGElement>) => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" /></svg>);
+const CheckBadgeIcon = (props: React.SVGProps<SVGSVGElement>) => (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}><path fillRule="evenodd" d="M8.603 3.799A4.49 4.49 0 0112 2.25c1.357 0 2.573.6 3.397 1.549a4.49 4.49 0 013.498 1.307 4.491 4.491 0 011.307 3.497A4.49 4.49 0 0121.75 12a4.49 4.49 0 01-1.549 3.397 4.491 4.491 0 01-1.307 3.497 4.491 4.491 0 01-3.497 1.307A4.49 4.49 0 0112 21.75a4.49 4.49 0 01-3.397-1.549 4.49 4.49 0 01-3.498-1.306 4.491 4.491 0 01-1.307-3.498A4.49 4.49 0 012.25 12c0-1.357.6-2.573 1.549-3.397a4.49 4.49 0 011.307-3.497 4.491 4.491 0 013.497-1.307zm4.45 6.45l-3.5 3.5a.75.75 0 01-1.06 0l-1.5-1.5a.75.75 0 111.06-1.06l.97.97 2.97-2.97a.75.75 0 111.06 1.06z" clipRule="evenodd" /></svg>);
+const GhostIcon = (props: React.SVGProps<SVGSVGElement>) => (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}><path d="M12.002 2.006C7.584 2.006 4 5.592 4 10.005v.553c0 3.328 1.463 6.324 3.82 8.256.002.002.004.004.006.005a.707.707 0 00.708-.002c.22-.16.37-.41.37-.68V16.5c0-.414.336-.75.75-.75h6.69c.414 0 .75.336.75.75v1.64c0 .268.15.52.37.68.002.001.003.003.005.004a.707.707 0 00.708 0c2.357-1.933 3.82-4.928 3.82-8.256v-.553c0-4.413-3.584-8-7.998-8zM9.001 9.505c-.828 0-1.5-.895-1.5-2s.672-2 1.5-2 1.5.895 1.5 2-.672 2-1.5 2zm6 0c-.828 0-1.5-.895-1.5-2s.672-2 1.5-2 1.5.895 1.5 2-.672 2-1.5 2z" /></svg>);
 
 interface SnapchatPageProps {
     platform: Platform;
 }
 
-const SnapchatPage: React.FC<SnapchatPageProps> = ({ platform }) => {
+const SnapchatPage: React.FC<SnapchatPageProps> = () => {
     const [viewState, setViewState] = useState<'upload' | 'processing' | 'dashboard' | 'viewer'>('upload');
     const [progress, setProgress] = useState('Initializing...');
     const [chats, setChats] = useState<InternalChat[]>([]);
     const [owner, setOwner] = useState('You');
-    const [stats, setStats] = useState<any>(null);
-    const [zipFile, setZipFile] = useState<File | null>(null);
+    const [stats, setStats] = useState<SnapchatStats | null>(null);
+    const [zip, setZip] = useState<ZipArchive | null>(null);
+    const [exportKey, setExportKey] = useState<string | undefined>();
 
     // Apply dark theme by default for Snapchat, but preserve previous state on unmount
     useEffect(() => {
@@ -35,10 +40,20 @@ const SnapchatPage: React.FC<SnapchatPageProps> = ({ platform }) => {
         };
     }, []);
 
+    const dropping = useFileDrop((files) => {
+        const file = files.find(f => /\.zip$/i.test(f.name));
+        if (file) void importArchive(file);
+        else alert('Drop your Snapchat export (mydata.zip).');
+    }, viewState === 'upload');
+
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (!file) return;
-        setZipFile(file);
+        if (file) await importArchive(file);
+        if (e.target) e.target.value = '';
+    };
+
+    const importArchive = async (file: File) => {
+        setExportKey(trackExport('snapchat', file));
         setViewState('processing');
         setProgress('Starting import...');
 
@@ -49,19 +64,18 @@ const SnapchatPage: React.FC<SnapchatPageProps> = ({ platform }) => {
             setChats(result.chats);
             setOwner(result.owner);
             setStats(result.stats);
+            setZip(result.zip);
             setViewState('dashboard');
         } catch (error) {
             console.error(error);
             alert("Error parsing file: " + (error instanceof Error ? error.message : "Unknown error"));
             setViewState('upload');
-            setZipFile(null);
-        } finally {
-            if (e.target) e.target.value = '';
+            setZip(null);
         }
     };
 
     if (viewState === 'viewer') {
-        return <SnapchatChatViewer chats={chats} owner={owner} zipFile={zipFile} onBack={() => setViewState('dashboard')} />;
+        return <SnapchatChatViewer chats={chats} owner={owner} zip={zip} exportKey={exportKey} onBack={() => setViewState('dashboard')} />;
     }
 
     return (
@@ -80,6 +94,7 @@ const SnapchatPage: React.FC<SnapchatPageProps> = ({ platform }) => {
             {/* Content */}
             <div className="container mx-auto max-w-4xl p-6 flex flex-col items-center justify-center min-h-[80vh]">
                 
+                <DropOverlay show={dropping} label="Drop your Snapchat export" />
                 {viewState === 'upload' && (
                     <div className="w-full max-w-xl text-center space-y-8 animate-fade-in">
                         <div className="p-10 border-2 border-dashed border-gray-700 rounded-3xl bg-gray-900/50 hover:bg-gray-900 hover:border-yellow-400 transition-all group cursor-pointer relative overflow-hidden">
@@ -102,6 +117,7 @@ const SnapchatPage: React.FC<SnapchatPageProps> = ({ platform }) => {
                                 </p>
                             </div>
                         </div>
+                        <RecentExports platform="snapchat" onOpen={(file) => void importArchive(file)} />
                     </div>
                 )}
 

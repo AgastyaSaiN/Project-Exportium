@@ -1,8 +1,28 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Chat, Message, Photo, Video } from './types';
+import { useDebouncedValue } from '../../../utils/useDebouncedValue';
+import VirtualList, { VirtualListHandle } from '../../../components/VirtualList';
+import LazyMedia from '../../../components/LazyMedia';
+import type { MediaSource } from '../../../utils/mediaLoader';
+import VirtualGrid from '../../../components/VirtualGrid';
+import { LightboxProvider } from '../../../components/Lightbox';
+import type { LightboxItem } from '../../../components/Lightbox';
+import MediaTile from '../../../components/MediaTile';
+import { StarButton, StarProvider, HitNavigator, SearchFilters, NO_FILTERS, passesFilters } from '../../../components/ChatTools';
+import type { SearchFilterValue } from '../../../components/ChatTools';
+import LibraryPanel from '../../../components/LibraryPanel';
+import type { ToolMessage } from '../../../utils/chatData';
+import { useExportPrefs } from '../../../utils/storage';
+import { focusChatSearch, useChatShortcuts } from '../../../utils/useChatShortcuts';
+import GlobalSearch from '../../../components/GlobalSearch';
+import type { GlobalHit, GlobalSearchFn } from '../../../components/GlobalSearch';
+import CalendarPopover, { CalendarDaysIcon, dayKey } from '../../../components/CalendarPopover';
+import WallpaperPicker from '../../../components/WallpaperPicker';
+import { resolveWallpaper, storableWallpaper, wallpaperStyle } from '../../../utils/wallpapers';
 
-const MESSAGES_PER_PAGE = 50;
-type LoadingStrategy = 'infinite' | 'full';
+type ChatRow =
+    | { kind: 'date'; key: string; label: string }
+    | { kind: 'group'; key: string; messages: Message[]; dayLabel: string };
 type Theme = 'light' | 'dark';
 
 // --- Icon Components ---
@@ -10,13 +30,6 @@ type Theme = 'light' | 'dark';
 const ArrowLeftIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-    </svg>
-);
-
-const SpinnerIcon: React.FC<{className?: string}> = ({className}) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" className={className}>
-        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
     </svg>
 );
 
@@ -51,25 +64,6 @@ const PhotoIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
     </svg>
 );
 
-const ChatBubbleIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.76 9.76 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.455.09-.91.09-1.365 0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
-    </svg>
-);
-
-const ExpandIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M20.25 20.25v-4.5m0 4.5h-4.5m4.5 0L15 15" />
-    </svg>
-);
-
-const PlayCircleIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        <path strokeLinecap="round" strokeLinejoin="round" d="M15.91 11.672a.375.375 0 010 .656l-5.603 3.113a.375.375 0 01-.557-.328V8.887c0-.286.307-.466.557-.327l5.603 3.112z" />
-    </svg>
-);
-
 const SunIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
@@ -98,6 +92,11 @@ const getMessagePreview = (message?: Message): string => {
     if (message.content) return message.content;
     if (message.photos?.length) return '📷 Photo';
     if (message.videos?.length) return '📹 Video';
+    if (message.audio_files?.length) return '🎤 Voice message';
+    if (message.sticker || message.gifs?.length) return 'Sticker';
+    if (message.share) return '🔗 ' + (message.share.share_text || 'Shared a post');
+    if (message.call_duration !== undefined) return '📞 Call';
+    if (message.is_unsent) return 'Message unsent';
     return 'Unsupported message';
 };
 
@@ -175,72 +174,7 @@ const UserAvatar: React.FC<{ name: string; className?: string; imageUrl?: string
     );
 });
 
-const useIntersectionObserver = (options: IntersectionObserverInit) => {
-    const [entry, setEntry] = useState<IntersectionObserverEntry | null>(null);
-    const observer = useRef<IntersectionObserver | null>(null);
-    const ref = useRef(null);
-
-    useEffect(() => {
-        const node = ref.current;
-        if (!node) return;
-
-        observer.current = new IntersectionObserver(([entry]) => {
-            if (entry.isIntersecting) {
-                setEntry(entry);
-                if (observer.current) {
-                    observer.current.unobserve(node);
-                }
-            }
-        }, options);
-
-        observer.current.observe(node);
-
-        return () => {
-            if (observer.current) {
-                observer.current.disconnect();
-            }
-        };
-    }, [options]);
-
-    return [ref, entry] as const;
-};
-
-const LazyMedia: React.FC<{ uri: string, createBlobUrl: (uri: string) => Promise<string | undefined>, isVideo: boolean, className?: string }> = ({ uri, createBlobUrl, isVideo, className }) => {
-    const [blobUrl, setBlobUrl] = useState<string | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
-    const [ref, entry] = useIntersectionObserver({ threshold: 0.1, rootMargin: '200px' });
-
-    useEffect(() => {
-        if (entry?.isIntersecting && !blobUrl && !isLoading) {
-            setIsLoading(true);
-            createBlobUrl(uri).then(url => {
-                if (url) {
-                    setBlobUrl(url);
-                }
-            }).finally(() => {
-                setIsLoading(false);
-            });
-        }
-    }, [entry, uri, createBlobUrl, blobUrl, isLoading]);
-
-    if (blobUrl) {
-        if (isVideo) {
-            return <video src={blobUrl} controls className={className} />;
-        }
-        return <img src={blobUrl} alt="A photo shared in the chat" className={className} />;
-    }
-    
-    const placeholderClass = isVideo ? 'aspect-video' : '';
-
-    return (
-        <div ref={ref} className={`${className} ${placeholderClass} bg-slate-200 dark:bg-slate-700 flex items-center justify-center`}>
-            {isLoading ? <SpinnerIcon className="w-6 h-6 text-slate-400 animate-spin" /> : <PhotoIcon className="w-8 h-8 text-slate-400" />}
-        </div>
-    );
-};
-
-
-const PhotoGrid: React.FC<{ photos: Photo[], createBlobUrl: (uri: string) => Promise<string | undefined> }> = ({ photos, createBlobUrl }) => {
+const PhotoGrid: React.FC<{ photos: Photo[], createBlobUrl: MediaSource }> = ({ photos, createBlobUrl }) => {
     const gridClasses = [
         '', // 0
         'grid-cols-1', // 1
@@ -260,7 +194,7 @@ const PhotoGrid: React.FC<{ photos: Photo[], createBlobUrl: (uri: string) => Pro
 
                 return (
                     <div key={photo.uri} className={`overflow-hidden rounded-md aspect-square ${itemClass}`}>
-                        <LazyMedia uri={photo.uri} createBlobUrl={createBlobUrl} isVideo={false} className="w-full h-full object-cover" />
+                        <LazyMedia uri={photo.uri} media={createBlobUrl} kind="image" className="w-full h-full object-cover" />
                     </div>
                 )
             })}
@@ -269,8 +203,23 @@ const PhotoGrid: React.FC<{ photos: Photo[], createBlobUrl: (uri: string) => Pro
 };
 
 
-const VideoDisplay: React.FC<{ video: Video, createBlobUrl: (uri: string) => Promise<string | undefined> }> = ({ video, createBlobUrl }) => (
-     <LazyMedia uri={video.uri} createBlobUrl={createBlobUrl} isVideo={true} className="max-w-xs sm:max-w-sm max-h-80 rounded-lg" />
+const VideoDisplay: React.FC<{ video: Video, createBlobUrl: MediaSource }> = ({ video, createBlobUrl }) => (
+     <LazyMedia uri={video.uri} media={createBlobUrl} kind="video" className="max-w-xs sm:max-w-sm max-h-80 rounded-lg" natural />
+);
+
+const formatCallLength = (seconds: number): string => {
+    if (seconds < 60) return `${seconds}s`;
+    const minutes = Math.floor(seconds / 60);
+    return minutes < 60 ? `${minutes} min ${seconds % 60}s` : `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
+};
+
+/** A post, reel or link that was sent in the chat. The export keeps its address and caption, not the content. */
+const SharedLinkCard: React.FC<{ share: NonNullable<Message['share']> }> = ({ share }) => (
+    <div className="self-start max-w-xs rounded-lg border border-current/20 px-3 py-2 text-sm">
+        <p className="font-semibold">Shared post{share.original_content_owner ? ` by ${share.original_content_owner}` : ''}</p>
+        {share.share_text && <p className="mt-1 opacity-80 line-clamp-4 whitespace-pre-wrap">{share.share_text}</p>}
+        {share.link && <a href={share.link} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="mt-1 block text-xs underline break-all opacity-80">{share.link}</a>}
+    </div>
 );
 
 const MessageBubble: React.FC<{
@@ -282,7 +231,7 @@ const MessageBubble: React.FC<{
     isSearching: boolean;
     onJumpFromSearch?: (messageId: string) => void;
     theme: string;
-    createBlobUrl: (uri: string) => Promise<string | undefined>;
+    createBlobUrl: MediaSource;
 }> = ({ message, isOwnMessage, isFirstInGroup, isLastInGroup, searchQuery, isSearching, onJumpFromSearch, theme, createBlobUrl }) => {
     const themeClasses = THEMES[theme]?.gradient || THEMES.default.gradient;
     const bubbleColor = isOwnMessage ? `${themeClasses} text-white` : 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 shadow-sm';
@@ -294,15 +243,31 @@ const MessageBubble: React.FC<{
     return (
         <div
             id={`message-${message.id}`}
-            className={`group flex items-end gap-2 max-w-lg ${isOwnMessage ? 'self-end' : 'self-start'} ${isSearching ? 'cursor-pointer' : ''}`}
+            className={`group relative flex items-end gap-2 max-w-lg ${isOwnMessage ? 'self-end' : 'self-start'} ${isSearching ? 'cursor-pointer' : ''}`}
             onClick={isSearching ? () => onJumpFromSearch?.(message.id) : undefined}
         >
+            <StarButton id={message.id} />
             <div className={`px-4 py-2.5 ${bubbleColor} ${roundingClasses}`}>
                 {message.content && <p className="whitespace-pre-wrap leading-relaxed"><HighlightedText text={message.content} highlight={searchQuery || ''} /></p>}
-                <div className={`flex flex-col gap-2 ${message.content ? 'mt-2' : ''}`}>
+                <div className={`flex flex-col gap-2 ${message.content || message.photos?.length ? 'mt-2' : ''}`}>
                     {message.photos && message.photos.length > 0 && <PhotoGrid photos={message.photos} createBlobUrl={createBlobUrl}/>}
                     {message.videos?.map((video, index) => <VideoDisplay key={index} video={video} createBlobUrl={createBlobUrl}/>)}
+                    {message.audio_files?.map((clip, index) => <LazyMedia key={`a${index}`} uri={clip.uri} media={createBlobUrl} kind="audio" />)}
+                    {message.gifs?.map((gif, index) => <LazyMedia key={`g${index}`} uri={gif.uri} media={createBlobUrl} kind="image" className="max-w-xs sm:max-w-sm max-h-80 rounded-lg" natural enlargeable={false} />)}
+                    {message.sticker && <LazyMedia uri={message.sticker.uri} media={createBlobUrl} kind="image" className="w-28 h-28 object-contain" natural enlargeable={false} />}
+                    {message.share && <SharedLinkCard share={message.share} />}
+                    {message.call_duration !== undefined && <p className="text-sm opacity-80">📞 Call · {formatCallLength(message.call_duration)}</p>}
+                    {message.is_unsent && <p className="text-sm italic opacity-70">This message was unsent.</p>}
                 </div>
+                {message.reactions && message.reactions.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                        {message.reactions.map((r, index) => (
+                            <span key={index} title={r.actor} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-black/10 dark:bg-white/15">
+                                <span>{r.reaction}</span><span className="opacity-70 truncate max-w-[8rem]">{r.actor}</span>
+                            </span>
+                        ))}
+                    </div>
+                )}
             </div>
              <span className="text-xs text-slate-400 dark:text-slate-500 mb-1 hidden group-hover:block">{formatTimestamp(message.timestamp_ms)}</span>
         </div>
@@ -319,13 +284,13 @@ const MessageGroup: React.FC<{
     customAvatarUrl?: string | null;
     onAvatarClick?: () => void;
     theme: string;
-    createBlobUrl: (uri: string) => Promise<string | undefined>;
+    createBlobUrl: MediaSource;
 }> = ({ messages, isOwnMessage, showAvatar, searchQuery, isSearching, onJumpFromSearch, customAvatarUrl, onAvatarClick, theme, createBlobUrl }) => {
     if (!messages.length) return null;
     const senderName = messages[0].sender_name;
 
     return (
-        <div className={`flex flex-col gap-0.5 w-full ${isOwnMessage ? 'items-end' : 'items-start'} opacity-0 animate-[fade-in_0.5s_ease-out_forwards]`}>
+        <div className={`flex flex-col gap-0.5 w-full ${isOwnMessage ? 'items-end' : 'items-start'}`}>
             <div className={`flex gap-3 ${isOwnMessage ? 'flex-row-reverse' : 'flex-row'}`}>
                 {!isOwnMessage && showAvatar && <UserAvatar name={senderName} className="w-9 h-9 self-end" imageUrl={customAvatarUrl} onClick={onAvatarClick ? (e) => { e.stopPropagation(); onAvatarClick(); } : undefined} />}
                 <div className="flex flex-col gap-0.5">
@@ -365,21 +330,19 @@ const SkeletonLoader: React.FC = () => (
 const SettingsModal: React.FC<{
     isOpen: boolean;
     onClose: () => void;
-    currentStrategy: LoadingStrategy;
-    onStrategyChange: (strategy: LoadingStrategy) => void;
     showAvatars: boolean;
     onShowAvatarsChange: (show: boolean) => void;
     currentTheme: string;
     onThemeChange: (theme: string) => void;
+    wallpaper: string | null;
+    onWallpaperChange: (value: string | null) => void;
     onUploadBackground: () => void;
-    onRemoveBackground: () => void;
     participants: { name: string }[];
     currentAlignment: string;
     onAlignmentChange: (name: string) => void;
     customAvatars: Record<string, string>;
 
-}> = ({ 
-    isOpen, onClose, currentStrategy, onStrategyChange, showAvatars, onShowAvatarsChange, currentTheme, onThemeChange, onUploadBackground, onRemoveBackground,
+}> = ({ isOpen, onClose, showAvatars, onShowAvatarsChange, currentTheme, onThemeChange, wallpaper, onWallpaperChange, onUploadBackground,
     participants, currentAlignment, onAlignmentChange, customAvatars
 }) => {
     if (!isOpen) return null;
@@ -425,11 +388,7 @@ const SettingsModal: React.FC<{
                             </button>
                         </div>
                          <div className="p-4 border border-slate-300 dark:border-slate-600 rounded-lg">
-                            <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-3">Chat Background</h4>
-                            <div className="flex gap-2">
-                                <button onClick={onUploadBackground} className="flex-1 px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-700 rounded-md hover:bg-slate-200 dark:hover:bg-slate-600 transition">Upload Image</button>
-                                <button onClick={onRemoveBackground} className="flex-1 px-4 py-2 text-sm font-semibold text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/30 rounded-md hover:bg-red-200 dark:hover:bg-red-900/50 transition">Remove</button>
-                            </div>
+                            <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-3">Chat Wallpaper</h4><WallpaperPicker value={wallpaper} onChange={onWallpaperChange} onUpload={onUploadBackground} ringClass="ring-pink-500" tone="pink" dark={document.documentElement.classList.contains('dark')} />
                         </div>
                     </div>
                      <div>
@@ -445,25 +404,6 @@ const SettingsModal: React.FC<{
                             ))}
                         </div>
                     </div>
-                    <div>
-                        <h3 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Message Loading</h3>
-                        <div className="space-y-2">
-                             <div
-                                onClick={() => onStrategyChange('infinite')}
-                                className={`p-4 border rounded-lg cursor-pointer transition-all ${currentStrategy === 'infinite' ? 'border-pink-500 bg-pink-50 dark:bg-pink-900/20 ring-2 ring-pink-200 dark:border-pink-500' : 'border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500'}`}
-                            >
-                                <h4 className="font-semibold text-slate-800 dark:text-slate-200">Incremental Loading</h4>
-                                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Loads {MESSAGES_PER_PAGE} messages at a time as you scroll. Best for performance.</p>
-                            </div>
-                            <div
-                                onClick={() => onStrategyChange('full')}
-                                className={`p-4 border rounded-lg cursor-pointer transition-all ${currentStrategy === 'full' ? 'border-pink-500 bg-pink-50 dark:bg-pink-900/20 ring-2 ring-pink-200 dark:border-pink-500' : 'border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500'}`}
-                            >
-                                <h4 className="font-semibold text-slate-800 dark:text-slate-200">Load All Messages</h4>
-                                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Loads the entire conversation at once. Useful for searching, but may cause lag on very large chats.</p>
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>
@@ -472,9 +412,13 @@ const SettingsModal: React.FC<{
 
 type MediaItem = (Photo | Video) & { type: 'photo' | 'video', sender: string, timestamp_ms: number, messageId: string, blobUrl?: string };
 
-const MediaGallery: React.FC<{ chat: Chat | null, onJumpToMessage: (item: MediaItem) => void, createBlobUrl: (uri: string) => Promise<string | undefined> }> = ({ chat, onJumpToMessage, createBlobUrl }) => {
-    const [mediaTypeFilter, setMediaTypeFilter] = useState<'all' | 'photos' | 'videos'>('all');
-    const [senderFilter, setSenderFilter] = useState<string>('all');
+interface GalleryFilters { type: 'all' | 'photos' | 'videos'; sender: string; }
+
+const MediaGallery: React.FC<{ chat: Chat | null, onJumpToMessage: (item: MediaItem) => void, createBlobUrl: MediaSource, filters: GalleryFilters, onFiltersChange: (next: GalleryFilters) => void, scrollMemory: { current: number } }> = ({ chat, onJumpToMessage, createBlobUrl, filters, onFiltersChange, scrollMemory }) => {
+    const mediaTypeFilter = filters.type;
+    const senderFilter = filters.sender;
+    const setMediaTypeFilter = (type: GalleryFilters['type']) => { scrollMemory.current = 0; onFiltersChange({ ...filters, type }); };
+    const setSenderFilter = (sender: string) => { scrollMemory.current = 0; onFiltersChange({ ...filters, sender }); };
 
     const allMedia = useMemo((): MediaItem[] => {
         if (!chat?.messages) return [];
@@ -499,7 +443,10 @@ const MediaGallery: React.FC<{ chat: Chat | null, onJumpToMessage: (item: MediaI
         return Array.from(names);
     }, [chat]);
 
+    const galleryItems = useMemo<LightboxItem[]>(() => filteredMedia.map(item => ({ uri: item.uri, kind: item.type === 'video' ? 'video' : 'image', sender: item.sender, timestamp: item.timestamp_ms, ref: item })), [filteredMedia]);
+
     return (
+        <LightboxProvider items={galleryItems} media={createBlobUrl} onShowInChat={(item) => onJumpToMessage(item.ref as MediaItem)}>
         <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900">
             <div className="flex-shrink-0 p-3 border-b border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm flex flex-wrap gap-4 items-center">
                 <div className="flex items-center">
@@ -518,26 +465,19 @@ const MediaGallery: React.FC<{ chat: Chat | null, onJumpToMessage: (item: MediaI
                     </select>
                 </div>
             </div>
-            <div className="flex-grow p-2 sm:p-4 overflow-y-auto">
+            <div className="flex-grow min-h-0 p-2 sm:p-4">
                 {filteredMedia.length > 0 ? (
-                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2">
-                        {filteredMedia.map(item => (
-                             <div key={item.uri} className="aspect-square bg-slate-200 dark:bg-slate-800 rounded-md overflow-hidden relative group">
-                                <LazyMedia uri={item.uri} createBlobUrl={createBlobUrl} isVideo={item.type === 'video'} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                                <div
-                                    onClick={() => onJumpToMessage(item)}
-                                    className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300 cursor-pointer"
-                                >
-                                    <ChatBubbleIcon className="w-8 h-8"/>
-                                    <span className="text-xs font-bold mt-1">View in Chat</span>
-                                </div>
-                                <a href={item.blobUrl} target="_blank" rel="noopener noreferrer" aria-label="Open fullscreen" className="absolute top-1.5 right-1.5 p-1.5 bg-black/40 rounded-full text-white hover:bg-black/60 transition-colors opacity-0 group-hover:opacity-100">
-                                    <ExpandIcon className="w-4 h-4" />
-                                </a>
-                            </div>
-                        ))}
-                    </div>
+                    <VirtualGrid
+                        className="h-full"
+                        initialScrollTop={scrollMemory.current}
+                        onScrollTopChange={(scrollTop) => { scrollMemory.current = scrollTop; }}
+                        count={filteredMedia.length}
+                        getCellKey={(index) => `${filteredMedia[index].messageId}-${filteredMedia[index].uri}`}
+                        renderCell={(index) => {
+                            const item = filteredMedia[index];
+                            return <MediaTile uri={item.uri} kind={item.type === 'video' ? 'video' : 'image'} media={createBlobUrl} onShowInChat={() => onJumpToMessage(item)} />;
+                        }}
+                    />
                 ) : (
                     <div className="flex items-center justify-center h-full text-center p-4">
                         <div>
@@ -551,6 +491,7 @@ const MediaGallery: React.FC<{ chat: Chat | null, onJumpToMessage: (item: MediaI
                 )}
             </div>
         </div>
+        </LightboxProvider>
     );
 };
 
@@ -559,90 +500,93 @@ const MediaGallery: React.FC<{ chat: Chat | null, onJumpToMessage: (item: MediaI
 interface InstagramChatViewerProps {
     chats: Chat[];
     ownerName: string;
+    /** Identifies this export so settings, stars and reading position are remembered. */
+    exportKey?: string;
+    /** Searches the text of every conversation; absent when only one chat was opened. */
+    onSearchAll?: GlobalSearchFn;
     onLoadMessages: (chatPath: string) => Promise<Message[]>;
-    createBlobUrl: (uri: string) => Promise<string | undefined>;
+    createBlobUrl: MediaSource;
     theme: Theme;
     onThemeToggle: () => void;
 }
 
-const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerName, onLoadMessages, createBlobUrl, theme, onThemeToggle }) => {
+const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerName, exportKey, onSearchAll, onLoadMessages, createBlobUrl, theme, onThemeToggle }) => {
+    const [prefs, updatePrefs] = useExportPrefs(exportKey);
     const [loadedChats, setLoadedChats] = useState<Record<string, Chat>>({});
     const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [isSidebarVisible, setIsSidebarVisible] = useState(true);
+    const [isSidebarVisible, setIsSidebarVisible] = useState(prefs.showAvatars ?? true);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-    const [loadingStrategy, setLoadingStrategy] = useState<LoadingStrategy>('infinite');
+    const [isCalendarOpen, setIsCalendarOpen] = useState(false);
     const [showAvatars, setShowAvatars] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
-    const [activeTab, setActiveTab] = useState<'messages' | 'media'>('messages');
-    const [scrollToMessageId, setScrollToMessageId] = useState<string | null>(null);
+    const [activeTab, setActiveTab] = useState<'messages' | 'media' | 'library'>('messages');
     const [customAvatars, setCustomAvatars] = useState<Record<string, string>>({});
-    const [chatThemes, setChatThemes] = useState<Record<string, string>>({});
-    const [chatBackgrounds, setChatBackgrounds] = useState<Record<string, string | null>>({});
-    const [messageAlignments, setMessageAlignments] = useState<Record<string, string>>({});
+    const [chatThemes, setChatThemes] = useState<Record<string, string>>(prefs.chatTheme ?? {});
+    const [chatBackgrounds, setChatBackgrounds] = useState<Record<string, string | null>>(prefs.wallpaper ?? {});
+    const [messageAlignments, setMessageAlignments] = useState<Record<string, string>>(prefs.alignment ?? {});
 
-    const scrollContainerRef = useRef<HTMLDivElement>(null);
-    const topSentinelRef = useRef<HTMLDivElement>(null);
+    const listRef = useRef<VirtualListHandle>(null);
+    const [galleryFilters, setGalleryFilters] = useState<GalleryFilters>({ type: 'all', sender: 'all' });
+    const galleryScroll = useRef(0);
     const avatarInputRef = useRef<HTMLInputElement>(null);
     const backgroundInputRef = useRef<HTMLInputElement>(null);
     const userForAvatarChange = useRef<string | null>(null);
     
-    const [displayedMessageCount, setDisplayedMessageCount] = useState(MESSAGES_PER_PAGE);
-    const scrollState = useRef({ isRestoring: false, oldScrollHeight: 0, shouldScrollToBottom: true });
 
     const selectedChat = useMemo(() => loadedChats[selectedChatId || ''] || null, [selectedChatId, loadedChats]);
     
-    const isSearching = useMemo(() => searchQuery.trim().length > 0, [searchQuery]);
+    const debouncedSearchQuery = useDebouncedValue(searchQuery);
+    const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
+    const [searchFilters, setSearchFilters] = useState<SearchFilterValue>(NO_FILTERS);
+    const isSearching = useMemo(() => debouncedSearchQuery.trim().length > 0, [debouncedSearchQuery]);
     
     const rightAlignedUser = useMemo(() => {
         if (!selectedChatId) return ownerName;
         return messageAlignments[selectedChatId] || ownerName;
     }, [selectedChatId, messageAlignments, ownerName]);
 
-    const { displayedMessages, hasMoreMessages, messageGroups, searchResultCount } = useMemo(() => {
-        if (!selectedChat?.messages) return { displayedMessages: [], hasMoreMessages: false, messageGroups: [], searchResultCount: null };
-        
-        const sourceMessages = selectedChat.messages;
-        const filteredMessages = isSearching
-            ? sourceMessages.filter(msg => msg.content && msg.content.toLowerCase().includes(searchQuery.toLowerCase()))
-            : sourceMessages;
-        
-        const resultCount = isSearching ? filteredMessages.length : null;
+    // Search the whole chat, group consecutive messages by sender, and flatten with date separators
+    // so the virtual list can window over every message.
+    const { rows, rowIndexByMessageId, searchResultCount, hitIds } = useMemo(() => {
+        const out: ChatRow[] = [];
+        const indexById = new Map<string, number>();
+        if (!selectedChat?.messages) return { rows: out, rowIndexByMessageId: indexById, searchResultCount: null, hitIds: [] as string[] };
 
-        const messagesToDisplay = isSearching
-            ? filteredMessages
-            : filteredMessages.slice(Math.max(0, filteredMessages.length - displayedMessageCount));
-        
-        const hasMore = !isSearching && loadingStrategy === 'infinite' && displayedMessageCount < filteredMessages.length;
+        const lowerQuery = debouncedSearchQuery.toLowerCase();
+        const shown = isSearching
+            ? selectedChat.messages.filter(msg => msg.content && msg.content.toLowerCase().includes(lowerQuery) && passesFilters(searchFilters, msg.sender_name, msg.timestamp_ms))
+            : selectedChat.messages;
 
-        const groups: Message[][] = [];
-        if (messagesToDisplay.length > 0) {
-            let currentGroup: Message[] = [messagesToDisplay[0]];
-            for (let i = 1; i < messagesToDisplay.length; i++) {
-                const prevMsg = messagesToDisplay[i-1];
-                const currentMsg = messagesToDisplay[i];
-                const sameSender = currentMsg.sender_name === prevMsg.sender_name;
-                const timeDiff = currentMsg.timestamp_ms - prevMsg.timestamp_ms;
-                const newDate = new Date(currentMsg.timestamp_ms).toDateString() !== new Date(prevMsg.timestamp_ms).toDateString();
-                
-                if (sameSender && timeDiff < 300000 && !newDate) {
-                    currentGroup.push(currentMsg);
-                } else {
-                    groups.push(currentGroup);
-                    currentGroup = [currentMsg];
+        const dayOf = (ms: number) => { const d = new Date(ms); return d.getFullYear() * 10000 + d.getMonth() * 100 + d.getDate(); };
+        let group: Message[] = [];
+        let lastDay = -1;
+        let dayLabel = '';
+        const flush = () => {
+            if (group.length === 0) return;
+            const rowIndex = out.length;
+            for (const m of group) indexById.set(m.id, rowIndex);
+            out.push({ kind: 'group', key: `g-${group[0].id}`, messages: group, dayLabel });
+            group = [];
+        };
+        for (const msg of shown) {
+            const day = dayOf(msg.timestamp_ms);
+            const prev = group[group.length - 1];
+            const continues = prev && prev.sender_name === msg.sender_name && msg.timestamp_ms - prev.timestamp_ms < 300000 && day === lastDay;
+            if (!continues) {
+                flush();
+                if (day !== lastDay) {
+                    dayLabel = formatDateSeparator(msg.timestamp_ms);
+                    out.push({ kind: 'date', key: `d-${msg.id}`, label: dayLabel });
+                    lastDay = day;
                 }
             }
-            groups.push(currentGroup);
+            group.push(msg);
         }
-
-        return {
-            displayedMessages: messagesToDisplay,
-            hasMoreMessages: hasMore,
-            messageGroups: groups,
-            searchResultCount: resultCount
-        };
-    }, [selectedChat, displayedMessageCount, loadingStrategy, searchQuery, isSearching]);
+        flush();
+        return { rows: out, rowIndexByMessageId: indexById, searchResultCount: isSearching ? shown.length : null, hitIds: isSearching ? shown.map(m => m.id) : ([] as string[]) };
+    }, [selectedChat, debouncedSearchQuery, isSearching, searchFilters]);
 
      useEffect(() => {
         const styleId = 'message-highlight-style';
@@ -669,27 +613,6 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
         `;
         document.head.appendChild(style);
     }, []);
-
-    useLayoutEffect(() => {
-        if (!scrollToMessageId) return;
-        
-        const element = document.getElementById(`message-${scrollToMessageId}`);
-        if (element) {
-            scrollState.current.shouldScrollToBottom = false;
-            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            element.classList.add('highlight-message');
-            
-            const timer = setTimeout(() => {
-                element.classList.remove('highlight-message');
-                setScrollToMessageId(null);
-            }, 2500);
-
-            return () => clearTimeout(timer);
-        } else {
-            setScrollToMessageId(null);
-        }
-
-    }, [scrollToMessageId, messageGroups]);
 
     const handleAvatarChangeClick = (userName: string) => {
         userForAvatarChange.current = userName;
@@ -725,78 +648,77 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
         reader.onload = (e) => {
             const dataUrl = e.target?.result as string;
             if (dataUrl) {
-                setChatBackgrounds(prev => ({ ...prev, [selectedChatId]: dataUrl }));
+                changeWallpaper(dataUrl);
             }
         };
         reader.readAsDataURL(file);
         if (event.target) event.target.value = '';
     };
     
-    const handleRemoveBackground = () => {
-        if (selectedChatId) {
-            setChatBackgrounds(prev => ({ ...prev, [selectedChatId]: null }));
-        }
+    const changeWallpaper = (value: string | null) => {
+        if (!selectedChatId) return;
+        setChatBackgrounds(prev => ({ ...prev, [selectedChatId]: value ?? 'none' }));
+        updatePrefs(p => ({ ...p, wallpaper: { ...p.wallpaper, [selectedChatId]: storableWallpaper(value) } }));
     };
 
-    const handleStrategyChange = (newStrategy: LoadingStrategy) => {
-        setLoadingStrategy(newStrategy);
-        if (selectedChat) {
-            if (newStrategy === 'infinite') {
-                setDisplayedMessageCount(MESSAGES_PER_PAGE);
-            } else {
-                setDisplayedMessageCount(selectedChat.messages.length);
+    // Scrolls the message into range (it may be anywhere in a huge chat), then flashes it once it mounts.
+    const jumpToMessage = useCallback((messageId: string) => {
+        const rowIndex = rowIndexByMessageId.get(messageId);
+        if (rowIndex === undefined) return;
+        listRef.current?.scrollToIndex(rowIndex, 'center');
+        let attempts = 0;
+        const highlight = () => {
+            const element = document.getElementById(`message-${messageId}`);
+            if (!element) {
+                if (++attempts < 30) requestAnimationFrame(highlight);
+                return;
             }
-        }
-    };
+            element.classList.add('highlight-message');
+            setTimeout(() => element.classList.remove('highlight-message'), 2500);
+        };
+        requestAnimationFrame(highlight);
+    }, [rowIndexByMessageId]);
 
     const handleJumpToMessage = useCallback((item: MediaItem) => {
-        if (!selectedChat?.messages) return;
-        const messageIndex = selectedChat.messages.findIndex(m => m.id === item.messageId);
-        if (messageIndex === -1) return;
-
-        if (loadingStrategy === 'infinite') {
-            const totalMessages = selectedChat.messages.length;
-            const requiredCount = totalMessages - messageIndex;
-            const newCount = Math.min(totalMessages, Math.max(displayedMessageCount, requiredCount + (MESSAGES_PER_PAGE / 2)));
-            if (newCount > displayedMessageCount) {
-                setDisplayedMessageCount(newCount);
-            }
-        }
-        
         setActiveTab('messages');
-        setScrollToMessageId(item.messageId);
-    }, [selectedChat, loadingStrategy, displayedMessageCount]);
-    
-    const handleJumpFromSearch = useCallback((messageId: string) => {
-        if (!selectedChat?.messages) return;
-        const messageIndex = selectedChat.messages.findIndex(m => m.id === messageId);
-        if (messageIndex === -1) return;
+        jumpToMessage(item.messageId);
+    }, [jumpToMessage]);
 
-        if (loadingStrategy === 'infinite') {
-            const totalMessages = selectedChat.messages.length;
-            const requiredCount = totalMessages - messageIndex;
-            const newCount = Math.min(totalMessages, Math.max(displayedMessageCount, requiredCount + (MESSAGES_PER_PAGE / 2)));
-            if (newCount > displayedMessageCount) {
-                setDisplayedMessageCount(newCount);
-            }
-        }
-        
+    // Leaving search rebuilds the list around the full chat, so jump once that row set exists.
+    const [pendingJumpId, setPendingJumpId] = useState<string | null>(null);
+    const [hitNav, setHitNav] = useState<{ ids: string[]; index: number } | null>(null);
+    const handleJumpFromSearch = useCallback((messageId: string) => {
+        setHitNav({ ids: hitIds, index: Math.max(0, hitIds.indexOf(messageId)) });
         setSearchQuery('');
-        setScrollToMessageId(messageId);
-    }, [selectedChat, loadingStrategy, displayedMessageCount]);
+        setPendingJumpId(messageId);
+    }, [hitIds]);
+    const stepHit = (delta: number) => {
+        if (!hitNav) return;
+        const index = Math.min(hitNav.ids.length - 1, Math.max(0, hitNav.index + delta));
+        setHitNav({ ...hitNav, index });
+        jumpToMessage(hitNav.ids[index]);
+    };
+    useEffect(() => {
+        // Wait until the message is in the list: after opening another chat it is not there at first.
+        if (pendingJumpId && !isSearching && searchQuery === '' && rowIndexByMessageId.has(pendingJumpId)) {
+            jumpToMessage(pendingJumpId);
+            setPendingJumpId(null);
+        }
+    }, [pendingJumpId, isSearching, searchQuery, jumpToMessage, rowIndexByMessageId]);
+
+    const openGlobalHit = (hit: GlobalHit) => {
+        setIsGlobalSearchOpen(false);
+        setActiveTab('messages');
+        setSearchQuery('');
+        const chat = chats.find(c => c.id === hit.chatId);
+        if (chat && chat.id !== selectedChatId) void handleSelectChat(chat);
+        setPendingJumpId(hit.messageId);
+    };
 
     const handleSelectChat = useCallback(async (chat: Chat) => {
         setIsSidebarVisible(false);
         setSearchQuery('');
         setActiveTab('messages');
-        scrollState.current.shouldScrollToBottom = true;
-
-        if (loadingStrategy === 'infinite') {
-            setDisplayedMessageCount(MESSAGES_PER_PAGE);
-        } else {
-            setDisplayedMessageCount(Number.MAX_SAFE_INTEGER);
-        }
-    
         if (loadedChats[chat.id]?.messages?.length > 0) {
             setSelectedChatId(chat.id);
             return;
@@ -816,15 +738,13 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
             const fullChat = { ...chat, messages };
             setLoadedChats(prev => ({ ...prev, [chat.id]: fullChat }));
             
-            if (loadingStrategy === 'full' || (chat.messages && chat.messages.length > 0)) {
-                setDisplayedMessageCount(messages.length);
-            }
+
         } catch (e) {
             setError(e instanceof Error ? e.message : "An unknown error occurred.");
         } finally {
             setIsLoading(false);
         }
-    }, [onLoadMessages, loadedChats, loadingStrategy]);
+    }, [onLoadMessages, loadedChats]);
     
     useEffect(() => {
         if (chats.length > 0 && !selectedChatId) {
@@ -832,59 +752,72 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
         }
     }, [chats, selectedChatId, handleSelectChat]);
 
-    const loadMoreMessages = useCallback(() => {
-        if (isLoading || !hasMoreMessages) return;
-        const container = scrollContainerRef.current;
-        if (!container) return;
-
-        scrollState.current = { isRestoring: true, oldScrollHeight: container.scrollHeight, shouldScrollToBottom: false };
-        const totalMessages = selectedChat?.messages?.length || 0;
-        setDisplayedMessageCount(prev => Math.min(totalMessages, prev + MESSAGES_PER_PAGE));
-    }, [isLoading, hasMoreMessages, selectedChat?.messages.length]);
-
-    useEffect(() => {
-        const observer = new IntersectionObserver(
-            (entries) => {
-                if (entries[0].isIntersecting) {
-                    loadMoreMessages();
-                }
-            },
-            { root: scrollContainerRef.current, threshold: 0.1 }
-        );
-
-        const sentinel = topSentinelRef.current;
-        if (sentinel && hasMoreMessages) {
-             observer.observe(sentinel);
+    // Every photo/video in the open chat, oldest first: what the arrows page through from a chat bubble.
+    const chatMediaItems = useMemo<LightboxItem[]>(() => {
+        const items: LightboxItem[] = [];
+        for (const message of selectedChat?.messages ?? []) {
+            for (const photo of message.photos ?? []) items.push({ uri: photo.uri, kind: 'image', sender: message.sender_name, timestamp: message.timestamp_ms, ref: message.id });
+            for (const video of message.videos ?? []) items.push({ uri: video.uri, kind: 'video', sender: message.sender_name, timestamp: message.timestamp_ms, ref: message.id });
         }
-        return () => { if (sentinel) observer.unobserve(sentinel); };
-    }, [loadMoreMessages, hasMoreMessages]);
+        return items;
+    }, [selectedChat]);
 
+    // A different chat has different senders and its own scroll position: start its gallery fresh.
+    useEffect(() => { galleryScroll.current = 0; setGalleryFilters(f => ({ ...f, sender: 'all' })); }, [selectedChatId]);
 
-    useLayoutEffect(() => {
-        const container = scrollContainerRef.current;
-        if (!container) return;
+    const chatKey = selectedChatId ?? '';
+    const starredIds = useMemo(() => new Set(prefs.stars?.[chatKey] ?? []), [prefs.stars, chatKey]);
+    const toggleStar = useCallback((id: string) => updatePrefs(p => {
+        const current = new Set(p.stars?.[chatKey] ?? []);
+        if (current.has(id)) current.delete(id); else current.add(id);
+        return { ...p, stars: { ...p.stars, [chatKey]: Array.from(current) } };
+    }), [updatePrefs, chatKey]);
 
-        if (scrollState.current.isRestoring) {
-            container.scrollTop = container.scrollHeight - scrollState.current.oldScrollHeight;
-            scrollState.current.isRestoring = false;
-        } else if (scrollState.current.shouldScrollToBottom && !scrollToMessageId) {
-            container.scrollTop = container.scrollHeight;
-            scrollState.current.shouldScrollToBottom = false;
-        }
-    }, [displayedMessages, scrollToMessageId]);
+    const toolMessages = useMemo<ToolMessage[]>(() => (selectedChat?.messages ?? []).map(m => ({
+        id: m.id, sender: m.sender_name, ts: m.timestamp_ms,
+        text: [m.content, m.share?.link, m.share?.share_text].filter(Boolean).join(' '),
+    })), [selectedChat]);
+
+    // Remember where the reader was in each chat, and return there next time (not while searching).
+    const savedRow = !isSearching && chatKey && prefs.positions?.[chatKey] ? rowIndexByMessageId.get(prefs.positions[chatKey]) : undefined;
+    const rememberPosition = useCallback((rowIndex: number) => {
+        if (isSearching || !chatKey) return;
+        const row = rows[rowIndex];
+        const next = rows[rowIndex + 1];
+        const id = row?.kind === 'group' ? row.messages[0].id : next?.kind === 'group' ? next.messages[0].id : undefined;
+        if (id) updatePrefs(p => (p.positions?.[chatKey] === id ? p : { ...p, positions: { ...p.positions, [chatKey]: id } }));
+    }, [isSearching, rows, updatePrefs, chatKey]);
+
+    const activeDays = useMemo(() => new Set((selectedChat?.messages ?? []).map(m => dayKey(m.timestamp_ms))), [selectedChat]);
+    const handleDateSelect = (date: Date) => {
+        const start = new Date(date).setHours(0, 0, 0, 0);
+        const messages = selectedChat?.messages ?? [];
+        const target = messages.find(m => m.timestamp_ms >= start) ?? messages[messages.length - 1];
+        if (!target) return;
+        setActiveTab('messages');
+        setSearchQuery('');
+        jumpToMessage(target.id);
+    };
+
+    useChatShortcuts({
+        onGoToDate: () => setIsCalendarOpen(true),
+        onGlobalFind: onSearchAll ? () => setIsGlobalSearchOpen(true) : undefined,
+        onFind: () => { setActiveTab('messages'); focusChatSearch(); },
+        onTop: () => listRef.current?.scrollToTop(),
+        onBottom: () => listRef.current?.scrollToBottom(),
+        onEscape: () => { if (hitNav) { setHitNav(null); return true; } if (searchQuery) { setSearchQuery(''); return true; } return false; },
+    }, activeTab === 'messages');
 
     const selectedChatTheme = chatThemes[selectedChatId || ''] || 'default';
-    const selectedChatBackground = chatBackgrounds[selectedChatId || ''] || null;
+    const selectedChatBackground = resolveWallpaper(chatBackgrounds[selectedChatId || '']);
 
-    const messageContainerStyle = selectedChatBackground ? {
-        backgroundImage: `url(${selectedChatBackground})`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-    } : {};
+    const messageContainerStyle = wallpaperStyle(selectedChatBackground, { tone: 'pink', dark: theme === 'dark' }) ?? {};
     
     const messageContainerClasses = selectedChatBackground ? '' : "bg-slate-50 dark:bg-slate-900 bg-[url('data:image/svg+xml,%3Csvg%20width%3D%224%22%20height%3D%224%22%20viewBox%3D%220%200%204%204%22%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%3E%3Cpath%20d%3D%22M1%203h1v1H1V3zm2-2h1v1H3V1z%22%20fill%3D%22%2394a3b8%22%20fill-opacity%3D%220.1%22%20fill-rule%3D%22evenodd%22%3E%3C/path%3E%3C/svg%3E')]";
 
     return (
+        <StarProvider starred={starredIds} onToggle={toggleStar}>
+        <LightboxProvider items={chatMediaItems} media={createBlobUrl} onShowInChat={(item) => { setActiveTab('messages'); jumpToMessage(item.ref as string); }}>
         <div className="flex w-full h-full bg-white dark:bg-slate-900 overflow-hidden relative">
             <input 
                 type="file" 
@@ -903,23 +836,24 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
             {selectedChat && <SettingsModal 
                 isOpen={isSettingsOpen}
                 onClose={() => setIsSettingsOpen(false)}
-                currentStrategy={loadingStrategy}
-                onStrategyChange={handleStrategyChange}
                 showAvatars={showAvatars}
-                onShowAvatarsChange={setShowAvatars}
+                onShowAvatarsChange={(show) => { setShowAvatars(show); updatePrefs(p => ({ ...p, showAvatars: show })); }}
                 currentTheme={selectedChatTheme}
-                onThemeChange={(theme) => selectedChatId && setChatThemes(prev => ({...prev, [selectedChatId]: theme}))}
+                onThemeChange={(theme) => { if (!selectedChatId) return; setChatThemes(prev => ({...prev, [selectedChatId]: theme})); updatePrefs(p => ({ ...p, chatTheme: { ...p.chatTheme, [selectedChatId]: theme } })); }}
                 onUploadBackground={handleBackgroundChangeClick}
-                onRemoveBackground={handleRemoveBackground}
+                wallpaper={selectedChatBackground} onWallpaperChange={changeWallpaper}
                 participants={selectedChat.participants}
                 currentAlignment={rightAlignedUser}
-                onAlignmentChange={(name) => selectedChatId && setMessageAlignments(prev => ({ ...prev, [selectedChatId]: name }))}
+                onAlignmentChange={(name) => { if (!selectedChatId) return; setMessageAlignments(prev => ({ ...prev, [selectedChatId]: name })); updatePrefs(p => ({ ...p, alignment: { ...p.alignment, [selectedChatId]: name } })); }}
                 customAvatars={customAvatars}
             />}
             <aside className={`absolute md:relative w-full md:w-1/3 lg:w-1/4 border-r border-slate-200 dark:border-slate-700 flex flex-col transition-transform duration-300 ease-in-out z-10 bg-white dark:bg-slate-800 h-full ${isSidebarVisible ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
                 <header className="p-4 border-b border-slate-200 dark:border-slate-700">
                     <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200">Your Chats</h2>
                     <p className="text-sm text-slate-500 dark:text-slate-400">{chats.length} conversations</p>
+                    {onSearchAll && <button type="button" onClick={() => setIsGlobalSearchOpen(true)} className="mt-3 w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                        <span>Search all chats</span><kbd className="text-xs opacity-60">Ctrl+Shift+F</kbd>
+                    </button>}
                 </header>
                 <div className="flex-grow overflow-y-auto">
                     {chats.map(chat => (
@@ -969,6 +903,7 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
                                     </span>
                                     <input
                                         type="text"
+                                        data-chat-search
                                         placeholder="Search..."
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}
@@ -980,6 +915,13 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
                                         </button>
                                     )}
                                 </div>}
+                                <button
+                                    onClick={() => setIsCalendarOpen(open => !open)}
+                                    className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                                    aria-label="Jump to date"
+                                >
+                                    <CalendarDaysIcon className="w-6 h-6 text-slate-600 dark:text-slate-300" />
+                                </button>
                                  <button
                                     onClick={onThemeToggle}
                                     className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
@@ -1004,71 +946,76 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
                              <button onClick={() => setActiveTab('media')} className={`py-3 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'media' ? 'border-pink-500 text-pink-600' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}>
                                 Media
                             </button>
+                             <button onClick={() => setActiveTab('library')} className={`py-3 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'library' ? 'border-pink-500 text-pink-600' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}>
+                                Library{starredIds.size ? ` (${starredIds.size})` : ''}
+                            </button>
                         </div>
                         
                         <div className="flex-grow overflow-hidden relative">
+                            <CalendarPopover tone="pink" startAt={selectedChat?.messages[selectedChat.messages.length - 1]?.timestamp_ms} isOpen={isCalendarOpen} onClose={() => setIsCalendarOpen(false)} onDateSelect={handleDateSelect} activeDays={activeDays} />
                             {isLoading ? <SkeletonLoader /> : error ? (
                                 <div className="absolute inset-0 flex items-center justify-center text-center text-red-500 bg-slate-50 dark:bg-slate-900 p-4"><div><h2 className="text-2xl font-semibold">Error Loading Chat</h2><p className="mt-2">{error}</p></div></div>
                             ) : (
                                 <>
                                     <div className={`w-full h-full transition-opacity duration-300 ${activeTab === 'messages' ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-                                         <div 
-                                            ref={scrollContainerRef} 
-                                            className={`h-full p-6 overflow-y-auto ${messageContainerClasses}`}
-                                            style={messageContainerStyle}
-                                         >
-                                            <div className="flex flex-col gap-4">
-                                                {hasMoreMessages && !isSearching && (
-                                                    <div ref={topSentinelRef} className="flex justify-center p-4">
-                                                        <SpinnerIcon className="w-8 h-8 text-slate-400 dark:text-slate-500 animate-spin" />
-                                                    </div>
-                                                )}
-                                                {isSearching && (
-                                                    <div className="text-center my-2 sticky top-2 z-10">
-                                                        <p className="text-sm text-slate-500 dark:text-slate-400 bg-slate-200/70 dark:bg-slate-700/70 backdrop-blur-sm inline-block px-3 py-1 rounded-full">
-                                                            {searchResultCount === 0 ? 'No messages found.' : `Found ${searchResultCount} message${searchResultCount !== 1 ? 's' : ''}.`}
-                                                        </p>
-                                                    </div>
-                                                )}
-                                                {messageGroups.map((group, groupIndex) => {
-                                                    const firstMessage = group[0];
-                                                    if (!firstMessage) return null;
-
-                                                    const prevGroup = messageGroups[groupIndex-1];
-                                                    const prevMessage = prevGroup ? prevGroup[prevGroup.length - 1] : undefined;
-
-                                                    const showDateSeparator = !prevMessage || new Date(firstMessage.timestamp_ms).toDateString() !== new Date(prevMessage.timestamp_ms).toDateString();
-                                                    const dateStr = formatDateSeparator(firstMessage.timestamp_ms);
-                                                    
-                                                    const isOwnMessage = firstMessage.sender_name === rightAlignedUser;
-
+                                         <div className="h-full flex flex-col">
+                                            {isSearching && (
+                                                <div className="flex-shrink-0 flex items-center justify-center gap-3 py-2 bg-slate-50 dark:bg-slate-900">
+                                                    <p className="text-sm text-slate-500 dark:text-slate-400 bg-slate-200/70 dark:bg-slate-700/70 backdrop-blur-sm inline-block px-3 py-1 rounded-full">
+                                                        {searchResultCount === 0 ? 'No messages found.' : `Found ${searchResultCount} message${searchResultCount !== 1 ? 's' : ''}.`}
+                                                    </p>
+                                                    <SearchFilters senders={selectedChat?.participants.map(p => p.name) ?? []} value={searchFilters} onChange={setSearchFilters} />
+                                                </div>
+                                            )}
+                                            <VirtualList
+                                                ref={listRef}
+                                                className={`flex-1 min-h-0 p-6 ${messageContainerClasses}`}
+                                                style={messageContainerStyle}
+                                                count={rows.length}
+                                                resetKey={`${selectedChatId}|${debouncedSearchQuery}`}
+                                                startIndex={savedRow ?? null}
+                                                onFirstVisibleChange={rememberPosition}
+                                                getScrubLabel={(index) => (rows[index].kind === 'date' ? rows[index].label : rows[index].dayLabel)}
+                                                getRowKey={(index) => rows[index].key}
+                                                getStickyLabel={(index) => (rows[index].kind === 'date' ? undefined : rows[index].dayLabel)}
+                                                estimateSize={96}
+                                                gap={8}
+                                                renderRow={(index) => {
+                                                    const row = rows[index];
+                                                    if (row.kind === 'date') {
+                                                        return (
+                                                            <div className="flex justify-center my-4">
+                                                                <span className="bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold px-3 py-1 rounded-full shadow-sm">{row.label}</span>
+                                                            </div>
+                                                        );
+                                                    }
+                                                    const firstMessage = row.messages[0];
                                                     return (
-                                                        <React.Fragment key={`${firstMessage.timestamp_ms}-${groupIndex}`}>
-                                                            {showDateSeparator && (
-                                                                <div className="flex justify-center my-4 sticky top-2 z-10">
-                                                                    <span className="bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold px-3 py-1 rounded-full shadow-sm">{dateStr}</span>
-                                                                </div>
-                                                            )}
-                                                            <MessageGroup
-                                                                messages={group}
-                                                                isOwnMessage={isOwnMessage}
-                                                                showAvatar={showAvatars}
-                                                                searchQuery={isSearching ? searchQuery : undefined}
-                                                                isSearching={isSearching}
-                                                                onJumpFromSearch={handleJumpFromSearch}
-                                                                customAvatarUrl={customAvatars[firstMessage.sender_name]}
-                                                                onAvatarClick={() => handleAvatarChangeClick(firstMessage.sender_name)}
-                                                                theme={selectedChatTheme}
-                                                                createBlobUrl={createBlobUrl}
-                                                            />
-                                                        </React.Fragment>
+                                                        <MessageGroup
+                                                            messages={row.messages}
+                                                            isOwnMessage={firstMessage.sender_name === rightAlignedUser}
+                                                            showAvatar={showAvatars}
+                                                            searchQuery={isSearching ? debouncedSearchQuery : undefined}
+                                                            isSearching={isSearching}
+                                                            onJumpFromSearch={handleJumpFromSearch}
+                                                            customAvatarUrl={customAvatars[firstMessage.sender_name]}
+                                                            onAvatarClick={() => handleAvatarChangeClick(firstMessage.sender_name)}
+                                                            theme={selectedChatTheme}
+                                                            createBlobUrl={createBlobUrl}
+                                                        />
                                                     );
-                                                })}
-                                            </div>
+                                                }}
+                                            />
                                         </div>
                                     </div>
                                     <div className={`absolute inset-0 transition-opacity duration-300 ${activeTab === 'media' ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-                                        <MediaGallery chat={selectedChat} onJumpToMessage={handleJumpToMessage} createBlobUrl={createBlobUrl} />
+                                        {activeTab === 'media' && <MediaGallery chat={selectedChat} onJumpToMessage={handleJumpToMessage} createBlobUrl={createBlobUrl} filters={galleryFilters} onFiltersChange={setGalleryFilters} scrollMemory={galleryScroll} />}
+                                    </div>
+                                    <div className={`absolute inset-0 transition-opacity duration-300 ${activeTab === 'library' ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                                        {activeTab === 'library' && selectedChat && (
+                                            <LibraryPanel messages={toolMessages} starred={starredIds} onToggleStar={toggleStar} media={createBlobUrl} chatTitle={selectedChat.title} accent="bg-pink-500"
+                                                onJump={(id) => { setActiveTab('messages'); jumpToMessage(id); }} />
+                                        )}
                                     </div>
                                 </>
                             )}
@@ -1084,6 +1031,12 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
                 )}
             </main>
         </div>
+        {isGlobalSearchOpen && onSearchAll && <GlobalSearch search={onSearchAll} onOpen={openGlobalHit} onClose={() => setIsGlobalSearchOpen(false)} accent="bg-pink-500" />}
+        {hitNav && activeTab === 'messages' && (
+            <HitNavigator position={hitNav.index + 1} total={hitNav.ids.length} onPrev={() => stepHit(-1)} onNext={() => stepHit(1)} onClose={() => setHitNav(null)} />
+        )}
+        </LightboxProvider>
+        </StarProvider>
     );
 };
 

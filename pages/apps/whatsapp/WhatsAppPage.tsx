@@ -1,11 +1,16 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import JSZip from 'jszip';
+import { openZip, ZipEntry } from '../../../utils/zipArchive';
 import { Platform } from '../../../constants';
 import WhatsAppChatViewer from './WhatsAppChatViewer';
 import { Chat } from './types';
-import { parseWhatsAppChat } from './parser';
+import { parseInWorker } from '../../../utils/parseInWorker';
+import { useMediaLoader } from '../../../utils/mediaLoader';
+import { DropOverlay, RecentExports } from '../../../components/ImportExtras';
+import { trackExport } from '../../../utils/recentFiles';
+import { usePersistentState, readJson, writeJson } from '../../../utils/storage';
+import { useFileDrop } from '../../../utils/useFileDrop';
 
 // --- Icon Components ---
 
@@ -48,8 +53,11 @@ const WhatsAppPage: React.FC<WhatsAppPageProps> = ({ platform }) => {
     const [errorMessage, setErrorMessage] = useState<string>('');
     const [chat, setChat] = useState<Chat | null>(null);
     const [ownerName, setOwnerName] = useState<string>('');
-    const [theme, setTheme] = useState<'light' | 'dark'>('light');
+    const [exportKey, setExportKey] = useState<string | undefined>();
+    const [theme, setTheme] = usePersistentState<'light' | 'dark'>('theme', 'light');
     const fileInputRef = useRef<HTMLInputElement>(null);
+    // The chat text and file name are kept so the date order can be re-read without re-importing.
+    const sourceRef = useRef<{ text: string; fileName: string }>({ text: '', fileName: '' });
 
     useEffect(() => {
         const root = window.document.documentElement;
@@ -61,13 +69,26 @@ const WhatsAppPage: React.FC<WhatsAppPageProps> = ({ platform }) => {
         setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
     };
 
+    const exportKeyOf = (file: File) => `whatsapp:${file.name}:${file.size}:${file.lastModified}`;
+
+    const dropping = useFileDrop((files) => {
+        const file = files.find(f => /\.(zip|txt)$/i.test(f.name));
+        if (file) void importFile(file);
+        else { setErrorMessage('Drop a WhatsApp export: a .zip or the chat .txt file.'); setStatus('error'); }
+    }, status === 'idle' || status === 'error');
+
     const handleSelectArchiveClick = () => {
         fileInputRef.current?.click();
     };
 
     const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
-        if (!file) return;
+        if (file) await importFile(file);
+        if (event.target) event.target.value = '';
+    };
+
+    const importFile = async (file: File) => {
+        setExportKey(trackExport('whatsapp', file));
 
         setStatus('processing');
         setErrorMessage('');
@@ -77,11 +98,11 @@ const WhatsAppPage: React.FC<WhatsAppPageProps> = ({ platform }) => {
 
         try {
             let chatContent: string;
-            let fileMap: Map<string, any> | undefined;
+            let fileMap: Map<string, ZipEntry> | undefined;
 
             if (file.type === 'application/zip' || file.name.endsWith('.zip')) {
                 setProcessingStep('Loading ZIP file...');
-                const zip = await JSZip.loadAsync(file);
+                const zip = await openZip(file);
                 
                 const chatFileCandidates = zip.file(/\.txt$/i);
                 const chatFile = chatFileCandidates.find(f => !f.name.startsWith('__MACOSX'));
@@ -93,8 +114,8 @@ const WhatsAppPage: React.FC<WhatsAppPageProps> = ({ platform }) => {
                 setProcessingStep('Reading chat file...');
                 chatContent = await chatFile.async('string');
                 
-                fileMap = new Map<string, any>();
-                Object.values(zip.files).forEach((file: JSZip.JSZipObject) => {
+                fileMap = new Map<string, ZipEntry>();
+                Object.values(zip.files).forEach((file: ZipEntry) => {
                     if (!file.dir) {
                         fileMap.set(file.name, file);
                     }
@@ -106,55 +127,56 @@ const WhatsAppPage: React.FC<WhatsAppPageProps> = ({ platform }) => {
             }
 
             setProcessingStep('Parsing messages...');
-            const parser = parseWhatsAppChat(chatContent, file.name);
+            sourceRef.current = { text: chatContent, fileName: file.name };
+            const parsed = await parseInWorker(
+                'whatsapp',
+                { text: chatContent, fileName: file.name },
+                (processed, total) => setProgress({ processed, total })
+            );
+            const finalChat: Chat = { ...parsed, fileMap };
 
-            for await (const result of parser) {
-                if (result.type === 'progress') {
-                    setProgress({ processed: result.processed, total: result.total });
-                } else if (result.type === 'complete') {
-                    const finalChat: Chat = {
-                        ...result.chat,
-                        fileMap,
-                    };
-
-                    setChat(finalChat);
-                    if (finalChat.participants.length > 1) {
-                        setStatus('selecting');
-                    } else if (finalChat.participants.length === 1) {
-                        handleUserSelection(finalChat.participants[0]?.name);
-                    } else {
-                        setStatus('loaded');
-                    }
-                }
+            setChat(finalChat);
+            const remembered = readJson<string>(`owner:${exportKeyOf(file)}`, '');
+            if (remembered && finalChat.participants.some(p => p.name === remembered) && !finalChat.dateOrderAmbiguous) {
+                handleUserSelection(remembered, exportKeyOf(file));
+            } else if (finalChat.participants.length > 1 || finalChat.dateOrderAmbiguous) {
+                setStatus('selecting');
+            } else if (finalChat.participants.length === 1) {
+                handleUserSelection(finalChat.participants[0]?.name);
+            } else {
+                setStatus('loaded');
             }
-        
+
         } catch (error) {
             console.error("Failed to process chat file:", error);
             setStatus('error');
             setErrorMessage(error instanceof Error ? error.message : "An unknown error occurred during processing.");
-        } finally {
-             if(event.target) event.target.value = '';
         }
     };
 
-    const handleUserSelection = (name: string) => {
+    const switchDateOrder = async () => {
+        if (!chat) return;
+        const next = chat.dateOrder === 'dmy' ? 'mdy' : 'dmy';
+        const parsed = await parseInWorker('whatsapp', { text: sourceRef.current.text, fileName: sourceRef.current.fileName, dateOrder: next });
+        setChat({ ...parsed, fileMap: chat.fileMap, dateOrderAmbiguous: true });
+    };
+
+    const handleUserSelection = (name: string, key = exportKey) => {
+        if (key) writeJson(`owner:${key}`, name);
         setOwnerName(name);
         setStatus('loaded');
     };
 
-    const createBlobUrl = async (uri: string, fileMap: Chat['fileMap']): Promise<string | undefined> => {
-        if (!fileMap) return undefined;
-        const decodedUri = decodeURIComponent(uri);
-        const mediaFile = fileMap.get(uri) || fileMap.get(decodedUri);
-
-        if (mediaFile) {
-             const blob = await mediaFile.async('blob');
-             return URL.createObjectURL(blob);
-        }
-        return undefined;
-    };
+    const chatFileMap = chat?.fileMap;
+    const getBlob = useCallback(async (uri: string): Promise<Blob | undefined> => {
+        if (!chatFileMap) return undefined;
+        const mediaFile = chatFileMap.get(uri) || chatFileMap.get(decodeURIComponent(uri));
+        return mediaFile ? mediaFile.async('blob') : undefined;
+    }, [chatFileMap]);
+    const mediaLoader = useMediaLoader(getBlob);
 
     const handleReset = () => {
+        mediaLoader.dispose();
         setStatus('idle');
         setErrorMessage('');
         setChat(null);
@@ -165,7 +187,7 @@ const WhatsAppPage: React.FC<WhatsAppPageProps> = ({ platform }) => {
 
     const renderContent = () => {
         switch (status) {
-            case 'processing':
+            case 'processing': {
                 const percent = progress.total > 0 ? Math.round((progress.processed / progress.total) * 100) : 0;
                 return (
                     <div className="text-center w-full max-w-lg">
@@ -183,6 +205,7 @@ const WhatsAppPage: React.FC<WhatsAppPageProps> = ({ platform }) => {
                         )}
                     </div>
                 );
+            }
             case 'error':
                  return (
                     <div className="text-center">
@@ -208,6 +231,17 @@ const WhatsAppPage: React.FC<WhatsAppPageProps> = ({ platform }) => {
                         <p className="mt-2 text-lg text-slate-500 dark:text-slate-400">
                             Select your name to correctly align message bubbles.
                         </p>
+                        {chat?.dateOrderAmbiguous && chat.messages[0] && (
+                            <div className="mt-6 p-4 text-left rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700 text-sm text-amber-900 dark:text-amber-200">
+                                <p>
+                                    The dates in this export can be read two ways. The first message is on{' '}
+                                    <strong>{new Date(chat.messages[0].timestamp_ms).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}</strong>.
+                                </p>
+                                <button onClick={switchDateOrder} className="mt-2 font-semibold underline underline-offset-2">
+                                    That looks wrong: read dates as {chat.dateOrder === 'dmy' ? 'month/day' : 'day/month'} instead
+                                </button>
+                            </div>
+                        )}
                         <div className="mt-8 space-y-3">
                             {chat?.participants.map(({name}) => (
                                 <button
@@ -250,12 +284,12 @@ const WhatsAppPage: React.FC<WhatsAppPageProps> = ({ platform }) => {
         return (
              <WhatsAppChatViewer 
                 chat={chat} 
-                ownerName={ownerName} 
+                ownerName={ownerName}
+                exportKey={exportKey} 
                 onReset={handleReset}
-                platform={platform}
                 theme={theme}
                 onThemeToggle={handleThemeToggle}
-                createBlobUrl={(uri) => createBlobUrl(uri, chat.fileMap)}
+                createBlobUrl={mediaLoader.source}
             />
         )
     }
@@ -271,6 +305,8 @@ const WhatsAppPage: React.FC<WhatsAppPageProps> = ({ platform }) => {
             />
             <div className="flex-grow flex items-center justify-center">
                 {renderContent()}
+                {status === 'idle' && <RecentExports platform="whatsapp" onOpen={(file) => void importFile(file)} />}
+                <DropOverlay show={dropping} label="Drop your WhatsApp export" />
             </div>
             {status !== 'processing' && status !== 'selecting' && (
                  <div className="flex-shrink-0 py-6 text-center">
