@@ -38,6 +38,9 @@ CLAUDE.local.md
 *.p12
 *.pem
 *.key
+*.jks
+*.keystore
+android/keystore.properties
 
 # Test and build output
 coverage
