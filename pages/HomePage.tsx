@@ -27,11 +27,11 @@ const HomePage: React.FC = () => {
        <div className="absolute inset-0 -z-10 h-full w-full bg-white dark:bg-slate-900 bg-[linear-gradient(to_right,#f0f0f0_1px,transparent_1px),linear-gradient(to_bottom,#f0f0f0_1px,transparent_1px)] dark:bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:6rem_4rem]"><div className="absolute bottom-0 left-0 right-0 top-0 bg-[radial-gradient(circle_800px_at_100%_200px,#d5c5ff,transparent)] dark:bg-[radial-gradient(circle_800px_at_100%_200px,#3f3c5f,transparent)]"></div></div>
       <main className="flex-grow flex flex-col lg:flex-row items-center justify-center p-4 sm:p-6 lg:p-8 relative">
         <div className="flex-grow flex flex-col items-center justify-center w-full lg:w-auto min-w-0">
-            <header className="text-center mb-8 md:mb-12 relative z-10">
+            <header className="text-center mb-8 md:mb-12 mobile:mb-6 relative z-10">
             {(
                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-200 dark:bg-slate-800 text-xs font-bold text-slate-600 dark:text-slate-300 mb-4 shadow-sm border border-slate-300 dark:border-slate-700">
                   <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                  Desktop v{__APP_VERSION__}
+                  <span><span className="mobile:hidden">Desktop</span><span className="hidden mobile:inline">Android</span> v{__APP_VERSION__}</span>
                </div>
             )}
             <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold text-slate-900 dark:text-white tracking-tight">
@@ -42,8 +42,22 @@ const HomePage: React.FC = () => {
             </p>
             </header>
 
-            <div 
-            className="relative flex items-center justify-center transition-all duration-300"
+            {/* Phone: a plain two-column grid replaces the ring of apps. */}
+            <div className="hidden mobile:grid grid-cols-2 gap-4 w-full max-w-sm relative z-10">
+                {PLATFORMS.map((platform) => (
+                    <PlatformCard
+                        key={platform.slug}
+                        name={platform.name}
+                        slug={platform.slug}
+                        icon={platform.icon}
+                        color={platform.color}
+                        badge={platform.badge}
+                    />
+                ))}
+            </div>
+
+            <div
+            className="mobile:hidden relative flex items-center justify-center transition-all duration-300"
             style={{ height: `${radius * 2 + 120}px`, width: `${radius * 2 + 120}px` }}
             >
             <LogoIcon
@@ -87,7 +101,7 @@ const HomePage: React.FC = () => {
                     </span>
                     In Development
                 </h3>
-                <div className="space-y-2">
+                <div className="space-y-2 mobile:grid mobile:grid-cols-2 mobile:gap-1 mobile:space-y-0">
                     {COMING_SOON_PLATFORMS.map((platform) => (
                         <div key={platform.slug} className="group flex items-center p-2.5 rounded-xl hover:bg-white dark:hover:bg-slate-700/80 border border-transparent hover:border-slate-200 dark:hover:border-slate-600 transition-all duration-200">
                             <div className={`p-1.5 rounded-lg bg-slate-100 dark:bg-slate-900 group-hover:scale-110 transition-transform duration-200`}>

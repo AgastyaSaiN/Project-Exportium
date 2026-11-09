@@ -334,7 +334,7 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
                             </div>
                             <div 
                                 onClick={handleSelectFolderClick}
-                                className="group p-6 bg-white dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 cursor-pointer"
+                                className="mobile:hidden group p-6 bg-white dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 cursor-pointer"
                             >
                                <div className="flex items-center">
                                     <div className="p-3 bg-sky-100 dark:bg-sky-900/30 rounded-lg">
@@ -354,17 +354,17 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
 
     if (chats.length > 0) {
         return (
-             <div className="w-screen h-screen bg-slate-100 dark:bg-slate-900 flex flex-col">
-                <header className="flex-shrink-0 bg-white dark:bg-slate-800 p-3 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center shadow-sm z-20">
+             <div className="w-screen h-screen mobile:h-[100dvh] mobile:pt-[max(env(safe-area-inset-top),28px)] bg-slate-100 dark:bg-slate-900 flex flex-col">
+                <header className="flex-shrink-0 bg-white dark:bg-slate-800 p-3 mobile:py-2 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center shadow-sm z-20">
                     <div className="flex items-center">
-                        <Icon className={`w-8 h-8 ${color}`} />
-                        <h1 className="text-xl font-bold ml-3 text-slate-800 dark:text-slate-200">Instagram Chat Viewer</h1>
+                        <Icon className={`w-8 h-8 mobile:w-6 mobile:h-6 ${color}`} />
+                        <h1 className="text-xl mobile:text-base font-bold ml-3 text-slate-800 dark:text-slate-200"><span className="mobile:hidden">Instagram Chat Viewer</span><span className="hidden mobile:inline">Instagram</span></h1>
                     </div>
                     <button
                         onClick={handleReset}
                         className="px-4 py-2 bg-pink-500 text-white text-sm font-semibold rounded-lg hover:bg-pink-600 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-pink-500"
                     >
-                        Process Another
+                        <span className="mobile:hidden">Process Another</span><span className="hidden mobile:inline">Home</span>
                     </button>
                 </header>
                 <main className="flex-grow overflow-hidden">

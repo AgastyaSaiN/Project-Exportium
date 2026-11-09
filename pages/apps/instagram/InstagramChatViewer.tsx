@@ -852,7 +852,7 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
                     <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200">Your Chats</h2>
                     <p className="text-sm text-slate-500 dark:text-slate-400">{chats.length} conversations</p>
                     {onSearchAll && <button type="button" onClick={() => setIsGlobalSearchOpen(true)} className="mt-3 w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
-                        <span>Search all chats</span><kbd className="text-xs opacity-60">Ctrl+Shift+F</kbd>
+                        <span>Search all chats</span><kbd className="text-xs opacity-60 mobile:hidden">Ctrl+Shift+F</kbd>
                     </button>}
                 </header>
                 <div className="flex-grow overflow-y-auto">
@@ -880,9 +880,9 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
             <main className="flex flex-col w-full h-full">
                 {selectedChat ? (
                     <>
-                        <header className="p-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between shadow-sm gap-4 bg-white dark:bg-slate-800">
-                           <div className="flex items-center min-w-0">
-                                <button onClick={() => setIsSidebarVisible(true)} className="md:hidden p-2 mr-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700"><ArrowLeftIcon className="w-5 h-5 text-slate-600 dark:text-slate-300" /></button>
+                        <header className="p-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between shadow-sm gap-4 bg-white dark:bg-slate-800 mobile:flex-wrap mobile:gap-x-2 mobile:gap-y-2 mobile:px-2">
+                           <div onClick={() => { if (document.documentElement.classList.contains('native-mobile')) setActiveTab(t => (t === 'library' ? 'messages' : 'library')); }} className="flex items-center min-w-0 mobile:flex-1">
+                                <button onClick={(e) => { e.stopPropagation(); setIsSidebarVisible(true); }} className="md:hidden p-2 mr-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700"><ArrowLeftIcon className="w-5 h-5 text-slate-600 dark:text-slate-300" /></button>
                                  {showAvatars && (
                                     <UserAvatar 
                                         name={selectedChat.title} 
@@ -893,11 +893,15 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
                                  )}
                                 <div className="ml-4 truncate">
                                    <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200 truncate">{selectedChat.title}</h3>
-                                   <p className="text-sm text-slate-500 dark:text-slate-400 truncate">{selectedChat.participants.map(p => p.name).join(', ')}</p>
+                                   {(() => {
+                                       const phone = document.documentElement.classList.contains('native-mobile');
+                                       const names = selectedChat.participants.map(p => p.name).filter(n => !phone || n !== rightAlignedUser);
+                                       return (!phone || names.length > 1) ? <p className="text-sm text-slate-500 dark:text-slate-400 truncate">{names.join(', ')}</p> : null;
+                                   })()}
                                 </div>
                            </div>
-                           <div className="flex-shrink-0 flex items-center gap-2">
-                               {activeTab === 'messages' && <div className="relative">
+                           <div className="flex-shrink-0 flex items-center gap-2 mobile:contents">
+                               {activeTab === 'messages' && <div className="relative mobile:order-4 mobile:basis-full">
                                     <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
                                         <SearchIcon className="w-5 h-5 text-slate-400 dark:text-slate-500" />
                                     </span>
@@ -907,7 +911,7 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
                                         placeholder="Search..."
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}
-                                        className="w-full max-w-[120px] sm:max-w-[200px] rounded-full border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 py-1.5 pl-10 pr-8 text-sm text-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-pink-500 transition-all duration-300"
+                                        className="w-full max-w-[120px] sm:max-w-[200px] mobile:max-w-none rounded-full border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 py-1.5 pl-10 pr-8 text-sm text-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-pink-500 transition-all duration-300"
                                     />
                                      {isSearching && (
                                         <button onClick={() => setSearchQuery('')} className="absolute inset-y-0 right-0 flex items-center pr-2 group">
@@ -917,21 +921,21 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
                                 </div>}
                                 <button
                                     onClick={() => setIsCalendarOpen(open => !open)}
-                                    className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                                    className="mobile:order-2 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                                     aria-label="Jump to date"
                                 >
                                     <CalendarDaysIcon className="w-6 h-6 text-slate-600 dark:text-slate-300" />
                                 </button>
                                  <button
                                     onClick={onThemeToggle}
-                                    className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                                    className="mobile:order-2 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                                     aria-label="Toggle theme"
                                 >
                                     {theme === 'light' ? <MoonIcon className="w-6 h-6 text-slate-600" /> : <SunIcon className="w-6 h-6 text-yellow-400" />}
                                 </button>
                                 <button
                                     onClick={() => setIsSettingsOpen(true)}
-                                    className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                                    className="mobile:order-2 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                                     aria-label="Chat settings"
                                 >
                                     <SettingsIcon className="w-6 h-6 text-slate-600 dark:text-slate-300" />
@@ -939,14 +943,14 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
                            </div>
                         </header>
 
-                        <div className="flex-shrink-0 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 flex items-center gap-4">
-                             <button onClick={() => setActiveTab('messages')} className={`py-3 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'messages' ? 'border-pink-500 text-pink-600' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}>
+                        <div className="flex-shrink-0 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 flex items-center gap-4 mobile:order-last mobile:border-b-0 mobile:border-t mobile:px-0 mobile:gap-0 mobile:pb-[max(env(safe-area-inset-bottom),20px)]">
+                             <button onClick={() => setActiveTab('messages')} className={`mobile:flex-1 mobile:py-3.5 py-3 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'messages' ? 'border-pink-500 text-pink-600' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}>
                                 Messages
                             </button>
-                             <button onClick={() => setActiveTab('media')} className={`py-3 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'media' ? 'border-pink-500 text-pink-600' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}>
+                             <button onClick={() => setActiveTab('media')} className={`mobile:flex-1 mobile:py-3.5 py-3 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'media' ? 'border-pink-500 text-pink-600' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}>
                                 Media
                             </button>
-                             <button onClick={() => setActiveTab('library')} className={`py-3 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'library' ? 'border-pink-500 text-pink-600' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}>
+                             <button onClick={() => setActiveTab('library')} className={`mobile:flex-1 mobile:py-3.5 py-3 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'library' ? 'border-pink-500 text-pink-600' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}>
                                 Library{starredIds.size ? ` (${starredIds.size})` : ''}
                             </button>
                         </div>

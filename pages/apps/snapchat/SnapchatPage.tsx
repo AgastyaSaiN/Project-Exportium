@@ -110,7 +110,7 @@ const SnapchatPage: React.FC<SnapchatPageProps> = () => {
                                 </div>
                                 <div>
                                     <h3 className="text-2xl font-bold text-white mb-2">Upload Data Archive</h3>
-                                    <p className="text-gray-400">Drag & drop your <span className="font-mono text-yellow-400">mydata.zip</span> here</p>
+                                    <p className="text-gray-400"><span className="mobile:hidden">Drag & drop your </span><span className="hidden mobile:inline">Tap to choose your </span><span className="font-mono text-yellow-400">mydata.zip</span><span className="mobile:hidden"> here</span></p>
                                 </div>
                                 <p className="text-xs text-gray-500 max-w-xs mx-auto">
                                     All processing happens locally in your browser. Your data never leaves your device.

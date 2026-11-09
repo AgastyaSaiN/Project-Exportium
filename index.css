@@ -7,6 +7,10 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Phone only: no rubber-band glow, no text-size jumps, taps respond at once. */
+.native-mobile body { overscroll-behavior: none; -webkit-text-size-adjust: 100%; touch-action: manipulation; }
+.native-mobile button, .native-mobile a { -webkit-tap-highlight-color: transparent; }
+
 /* A list whose own timeline slider replaces the native scrollbar. */
 .ep-no-scrollbar { scrollbar-width: none; }
 .ep-no-scrollbar::-webkit-scrollbar { display: none; }

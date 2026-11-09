@@ -229,7 +229,7 @@ const TelegramPage: React.FC<TelegramPageProps> = ({ platform }) => {
                             
                             <div 
                                 onClick={handleSelectFolderClick}
-                                className="group p-6 bg-white dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 cursor-pointer"
+                                className="mobile:hidden group p-6 bg-white dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 cursor-pointer"
                             >
                                 <div className="flex items-center">
                                     <div className="p-3 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg">
@@ -249,8 +249,8 @@ const TelegramPage: React.FC<TelegramPageProps> = ({ platform }) => {
 
     if (chats.length > 0) {
         return (
-             <div className="w-screen h-screen bg-slate-100 dark:bg-slate-900 flex flex-col">
-                <TelegramChatViewer 
+             <div className="w-screen h-screen mobile:h-[100dvh] mobile:pt-[max(env(safe-area-inset-top),28px)] bg-slate-100 dark:bg-slate-900 flex flex-col">
+                <TelegramChatViewer
                     chats={chats} 
                     ownerId={ownerId}
                     exportKey={exportKey}
