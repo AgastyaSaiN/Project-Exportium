@@ -39,6 +39,6 @@ If this ever changes, the updated policy will be published here and the date abo
 
 ## Contact
 
-Questions about this policy: open an issue at https://github.com/AgastyaSaiN/Project-Exportium/issues or write to **[your contact email]**.
+Questions about this policy: open an issue at https://github.com/AgastyaSaiN/Project-Exportium/issues or write to **agastyasainallamala@gmail.com**.
 
 _Exportium is an independent app. It is not affiliated with, endorsed by or sponsored by WhatsApp, Meta, Instagram, Telegram or Snap Inc. Those names are trademarks of their respective owners and are used only to describe the file formats the app can read._
