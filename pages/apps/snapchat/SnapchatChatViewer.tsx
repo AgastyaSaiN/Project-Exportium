@@ -9,8 +9,9 @@ import LazyMedia from '../../../components/LazyMedia';
 import { LightboxProvider } from '../../../components/Lightbox';
 import type { LightboxItem } from '../../../components/Lightbox';
 import type { VirtualListHandle } from '../../../components/VirtualList';
-import { StarButton, StarProvider } from '../../../components/ChatTools';
+import { StarButton, StarProvider, PhoneMenu } from '../../../components/ChatTools';
 import LibraryPanel from '../../../components/LibraryPanel';
+import { PhoneSettingsPage, SettingsHeading, isPhoneApp } from '../../../components/PhoneSettings';
 import type { ToolMessage } from '../../../utils/chatData';
 import { useExportPrefs } from '../../../utils/storage';
 import { useChatShortcuts } from '../../../utils/useChatShortcuts';
@@ -78,7 +79,7 @@ const MessageBubble: React.FC<{ msg: InternalMessage, isOwner: boolean, media: M
                 {(msg.content || (!msg.media)) && (
                     <div className="px-3 py-2">
                         {msg.content ? (
-                            <p className="text-sm text-gray-200 whitespace-pre-wrap">{msg.content}</p>
+                            <p className="text-sm text-gray-200 whitespace-pre-wrap mobile:[overflow-wrap:anywhere]">{msg.content}</p>
                         ) : (
                             <p className="text-sm text-gray-500 italic uppercase font-bold text-[10px] tracking-wider">
                                 {msg.type}
@@ -96,6 +97,18 @@ const SettingsModal: React.FC<{ isOpen: boolean; onClose: () => void; currentOwn
     const [inputValue, setInputValue] = useState(currentOwner);
 
     if (!isOpen) return null;
+
+    if (isPhoneApp()) return (
+        <PhoneSettingsPage title="Viewer Settings" onClose={onClose} dark>
+            <SettingsHeading hint="Messages sent by this username will appear on the right side.">My username (alignment)</SettingsHeading>
+            <div className="flex gap-2 px-4 pb-2">
+                <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} className="flex-1 min-w-0 bg-black border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-yellow-400" placeholder="Enter username..." />
+                <button type="button" onClick={() => { onOwnerChange(inputValue); onClose(); }} className="flex-none bg-yellow-400 text-black font-bold px-4 py-2 rounded-lg">Save</button>
+            </div>
+            <SettingsHeading>Chat wallpaper</SettingsHeading>
+            <div className="px-4 pb-8"><WallpaperPicker value={wallpaper} onChange={onWallpaperChange} ringClass="ring-yellow-400" tone="yellow" dark /></div>
+        </PhoneSettingsPage>
+    );
 
     return (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -377,10 +390,11 @@ const SnapchatChatViewer: React.FC<SnapchatChatViewerProps> = ({ chats, owner, z
                             </button>
                             <button
                                 onClick={() => setIsSettingsOpen(true)}
-                                className="p-2 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white transition-colors"
+                                className="mobile:hidden p-2 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white transition-colors"
                             >
                                 <SettingsIcon className="w-6 h-6" />
                             </button>
+                            <PhoneMenu dark order="mobile:order-last" items={[{ label: 'Chat settings', onClick: () => setIsSettingsOpen(true) }]} />
                         </div>
                         
                         <div className="relative"><CalendarPopover tone="yellow" startAt={selectedChat.messages[selectedChat.messages.length - 1]?.timestamp} isOpen={isCalendarOpen} onClose={() => setIsCalendarOpen(false)} onDateSelect={handleDateSelect} activeDays={activeDays} /></div>

@@ -400,7 +400,7 @@ const InstagramPage: React.FC<InstagramPageProps> = ({ platform }) => {
                 directory=""
                 multiple
             />
-            <div className="flex-grow flex items-center justify-center">
+            <div className="flex-grow flex items-center justify-center mobile:flex-col mobile:justify-start mobile:pt-6">
                 {renderUploadView()}
                 {status === 'idle' && !participantsForSelection && <RecentExports platform="instagram" onOpen={(file) => void importArchive(file)} />}
                 <DropOverlay show={dropping} label="Drop your Instagram archive" />

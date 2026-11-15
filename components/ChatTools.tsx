@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { openTutorial } from './PhoneTutorial';
+import { useBackToClose } from '../utils/useBackToClose';
 
 // ----------------------------------------------------------------------------- stars
 
@@ -20,6 +22,7 @@ const isPhone = () => typeof document !== 'undefined' && document.documentElemen
 /** Phone only: the sheet that opens when you press and hold a message. */
 const MessageSheet: React.FC<{ starred: boolean; text: string; onStar: () => void; onClose: () => void }> = ({ starred, text, onStar, onClose }) => {
     const [note, setNote] = useState('');
+    useBackToClose(onClose);
     const done = (message: string) => { setNote(message); window.setTimeout(onClose, 700); };
     const copy = async () => { try { await navigator.clipboard.writeText(text); done('Copied'); } catch { done('Could not copy'); } };
     const share = async () => { try { await navigator.share({ text }); onClose(); } catch { onClose(); } };
@@ -120,6 +123,48 @@ export const StarButton: React.FC<{ id: string | number }> = ({ id }) => {
     );
 };
 
+/** Phone only: true while the on-screen keyboard is open (the WebView gets shorter than it was). */
+export const useKeyboardOpen = (): boolean => {
+    const [open, setOpen] = useState(false);
+    useEffect(() => {
+        let tallest = window.innerHeight;
+        let width = window.innerWidth;
+        const check = () => {
+            if (window.innerWidth !== width) { width = window.innerWidth; tallest = window.innerHeight; }
+            tallest = Math.max(tallest, window.innerHeight);
+            setOpen(tallest - window.innerHeight > 150);
+        };
+        window.addEventListener('resize', check);
+        return () => window.removeEventListener('resize', check);
+    }, []);
+    return open;
+};
+
+/** Phone only: the three-dots button in a chat header, with the less common actions in a dropdown. */
+export const PhoneMenu: React.FC<{ items: { label: string; onClick: () => void }[]; order?: string; dark?: boolean }> = ({ items, order = 'mobile:order-3', dark }) => {
+    const [open, setOpen] = useState(false);
+    const panel = dark ? 'bg-gray-900 border-gray-700 text-gray-100' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600 text-slate-800 dark:text-slate-100';
+    const hover = dark ? 'active:bg-gray-800' : 'active:bg-slate-100 dark:active:bg-slate-700';
+    const dots = dark ? 'text-gray-300' : 'text-slate-600 dark:text-slate-300';
+    return (
+        <div className={`hidden mobile:block relative ${order}`}>
+            <button type="button" aria-label="More options" aria-expanded={open} onClick={() => setOpen(o => !o)} className={`p-2 rounded-full ${dots}`}>
+                <svg viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6"><circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" /></svg>
+            </button>
+            {open && (
+                <>
+                    <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+                    <div className={`absolute right-0 top-full mt-1 z-50 min-w-[11rem] rounded-xl border py-1 shadow-xl ${panel}`}>
+                        {[...items, { label: 'How it works', onClick: openTutorial }].map(item => (
+                            <button key={item.label} type="button" className={`w-full text-left px-4 py-3 text-base ${hover}`} onClick={() => { setOpen(false); item.onClick(); }}>{item.label}</button>
+                        ))}
+                    </div>
+                </>
+            )}
+        </div>
+    );
+};
+
 // ----------------------------------------------------------------------------- search hits
 
 interface HitNavigatorProps {
@@ -133,11 +178,11 @@ interface HitNavigatorProps {
 
 /** After jumping to a search result in context, steps to the previous or next match without going back to the list. */
 export const HitNavigator: React.FC<HitNavigatorProps> = ({ position, total, onPrev, onNext, onClose }) => (
-    <div role="toolbar" aria-label="Search matches" className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1 pl-4 pr-2 py-1.5 rounded-full bg-slate-900/95 text-white shadow-xl text-sm">
-        <span className="font-semibold tabular-nums">Match {position.toLocaleString()} of {total.toLocaleString()}</span>
-        <button type="button" aria-label="Previous match" onClick={onPrev} disabled={position <= 1} className="w-8 h-8 rounded-full hover:bg-white/15 disabled:opacity-30">↑</button>
-        <button type="button" aria-label="Next match" onClick={onNext} disabled={position >= total} className="w-8 h-8 rounded-full hover:bg-white/15 disabled:opacity-30">↓</button>
-        <button type="button" aria-label="Close match navigator" onClick={onClose} className="w-8 h-8 rounded-full hover:bg-white/15">✕</button>
+    <div role="toolbar" aria-label="Search matches" className="fixed bottom-6 mobile:bottom-28 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1 pl-4 pr-2 py-1.5 mobile:py-2 rounded-full bg-slate-900/95 text-white shadow-xl text-sm">
+        <span className="font-semibold tabular-nums whitespace-nowrap">Match {position.toLocaleString()} of {total.toLocaleString()}</span>
+        <button type="button" aria-label="Previous match" onClick={onPrev} disabled={position <= 1} className="w-8 h-8 mobile:w-11 mobile:h-11 mobile:text-lg rounded-full hover:bg-white/15 disabled:opacity-30">↑</button>
+        <button type="button" aria-label="Next match" onClick={onNext} disabled={position >= total} className="w-8 h-8 mobile:w-11 mobile:h-11 mobile:text-lg rounded-full hover:bg-white/15 disabled:opacity-30">↓</button>
+        <button type="button" aria-label="Close match navigator" onClick={onClose} className="w-8 h-8 mobile:w-11 mobile:h-11 rounded-full hover:bg-white/15">✕</button>
     </div>
 );
 

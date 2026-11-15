@@ -4,6 +4,7 @@ import { PLATFORMS, COMING_SOON_PLATFORMS } from '../constants';
 import PlatformCard from '../components/PlatformCard';
 import LogoIcon from '../components/LogoIcon';
 import AppFooter from '../components/AppFooter';
+import { openTutorial } from '../components/PhoneTutorial';
 
 const HomePage: React.FC = () => {
   const [radius, setRadius] = React.useState(250);
@@ -120,10 +121,11 @@ const HomePage: React.FC = () => {
         </div>
       </main>
 
-      <footer className="w-full py-6 text-center mt-auto">
+      <footer className="w-full py-6 mobile:pb-[max(env(safe-area-inset-bottom),32px)] text-center mt-auto">
         <p className="text-sm text-slate-500 dark:text-slate-400">
           Privacy First. All data stays on your device.
         </p>
+        <button type="button" onClick={openTutorial} className="hidden mobile:inline-block mt-2 px-4 py-2 text-sm font-semibold text-green-600 dark:text-green-400">How it works</button>
         <div className="mt-2"><AppFooter /></div>
       </footer>
     </div>

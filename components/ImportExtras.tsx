@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { canReopenRecents, reopenRecent } from '../utils/recentFiles';
+import { canReopenRecents, forgetOnAndroid, isAndroidApp, reopenRecent } from '../utils/recentFiles';
 import { forgetRecent, readRecents } from '../utils/storage';
 import type { RecentExport } from '../utils/storage';
 
@@ -32,9 +32,9 @@ interface RecentExportsProps {
     onOpen: (file: File) => void;
 }
 
-/** The exports opened before on this platform: one click reopens them (desktop app only). */
+/** The exports opened before on this platform: one click reopens them (desktop and Android apps). */
 export const RecentExports: React.FC<RecentExportsProps> = ({ platform, onOpen }) => {
-    const [recents, setRecents] = useState<RecentExport[]>(() => readRecents().filter(r => r.platform === platform && r.path));
+    const [recents, setRecents] = useState<RecentExport[]>(() => readRecents().filter(r => r.platform === platform && (r.path || isAndroidApp())));
     const [message, setMessage] = useState('');
 
     if (!canReopenRecents() || recents.length === 0) return null;
@@ -44,12 +44,13 @@ export const RecentExports: React.FC<RecentExportsProps> = ({ platform, onOpen }
         const file = await reopenRecent(entry);
         if (file) { onOpen(file); return; }
         forgetRecent(entry);
+        forgetOnAndroid(entry);
         setRecents(list => list.filter(r => r !== entry));
         setMessage(`"${entry.name}" could not be opened. It may have been moved or deleted.`);
     };
 
     return (
-        <div className="mt-10 text-left max-w-xl mx-auto">
+        <div className="mt-10 text-left max-w-xl mx-auto mobile:w-full">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Recent</h3>
             <ul className="mt-2 divide-y divide-slate-200 dark:divide-slate-700 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60">
                 {recents.map(entry => (
@@ -61,7 +62,7 @@ export const RecentExports: React.FC<RecentExportsProps> = ({ platform, onOpen }
                         <button
                             type="button"
                             aria-label={`Remove ${entry.name} from recent`}
-                            onClick={() => { forgetRecent(entry); setRecents(list => list.filter(r => r !== entry)); }}
+                            onClick={() => { forgetRecent(entry); forgetOnAndroid(entry); setRecents(list => list.filter(r => r !== entry)); }}
                             className="px-4 py-3 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
                         >
                             ✕

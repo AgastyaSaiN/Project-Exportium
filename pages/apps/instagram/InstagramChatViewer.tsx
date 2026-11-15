@@ -8,9 +8,10 @@ import VirtualGrid from '../../../components/VirtualGrid';
 import { LightboxProvider } from '../../../components/Lightbox';
 import type { LightboxItem } from '../../../components/Lightbox';
 import MediaTile from '../../../components/MediaTile';
-import { StarButton, StarProvider, HitNavigator, SearchFilters, NO_FILTERS, passesFilters } from '../../../components/ChatTools';
+import { StarButton, StarProvider, HitNavigator, SearchFilters, NO_FILTERS, passesFilters, PhoneMenu, useKeyboardOpen } from '../../../components/ChatTools';
 import type { SearchFilterValue } from '../../../components/ChatTools';
 import LibraryPanel from '../../../components/LibraryPanel';
+import { PhoneSettingsPage, SettingsHeading, SettingsChoice, SettingsSwitch, ACCENTS, isPhoneApp } from '../../../components/PhoneSettings';
 import type { ToolMessage } from '../../../utils/chatData';
 import { useExportPrefs } from '../../../utils/storage';
 import { focusChatSearch, useChatShortcuts } from '../../../utils/useChatShortcuts';
@@ -204,7 +205,7 @@ const PhotoGrid: React.FC<{ photos: Photo[], createBlobUrl: MediaSource }> = ({ 
 
 
 const VideoDisplay: React.FC<{ video: Video, createBlobUrl: MediaSource }> = ({ video, createBlobUrl }) => (
-     <LazyMedia uri={video.uri} media={createBlobUrl} kind="video" className="max-w-xs sm:max-w-sm max-h-80 rounded-lg" natural />
+     <LazyMedia uri={video.uri} media={createBlobUrl} kind="video" className="max-w-xs sm:max-w-sm max-h-80 mobile:max-w-full mobile:max-h-[55vh] rounded-lg" natural />
 );
 
 const formatCallLength = (seconds: number): string => {
@@ -248,13 +249,13 @@ const MessageBubble: React.FC<{
         >
             <StarButton id={message.id} />
             <div className={`px-4 py-2.5 ${bubbleColor} ${roundingClasses}`}>
-                {message.content && <p className="whitespace-pre-wrap leading-relaxed"><HighlightedText text={message.content} highlight={searchQuery || ''} /></p>}
+                {message.content && <p className="whitespace-pre-wrap mobile:[overflow-wrap:anywhere] leading-relaxed"><HighlightedText text={message.content} highlight={searchQuery || ''} /></p>}
                 <div className={`flex flex-col gap-2 ${message.content || message.photos?.length ? 'mt-2' : ''}`}>
                     {message.photos && message.photos.length > 0 && <PhotoGrid photos={message.photos} createBlobUrl={createBlobUrl}/>}
                     {message.videos?.map((video, index) => <VideoDisplay key={index} video={video} createBlobUrl={createBlobUrl}/>)}
                     {message.audio_files?.map((clip, index) => <LazyMedia key={`a${index}`} uri={clip.uri} media={createBlobUrl} kind="audio" />)}
-                    {message.gifs?.map((gif, index) => <LazyMedia key={`g${index}`} uri={gif.uri} media={createBlobUrl} kind="image" className="max-w-xs sm:max-w-sm max-h-80 rounded-lg" natural enlargeable={false} />)}
-                    {message.sticker && <LazyMedia uri={message.sticker.uri} media={createBlobUrl} kind="image" className="w-28 h-28 object-contain" natural enlargeable={false} />}
+                    {message.gifs?.map((gif, index) => <LazyMedia key={`g${index}`} uri={gif.uri} media={createBlobUrl} kind="image" className="max-w-xs sm:max-w-sm max-h-80 mobile:max-w-full mobile:max-h-[55vh] rounded-lg" natural enlargeable={false} />)}
+                    {message.sticker && <LazyMedia uri={message.sticker.uri} media={createBlobUrl} kind="image" className="w-28 h-28 mobile:w-36 mobile:h-36 object-contain" natural enlargeable={false} animated compact />}
                     {message.share && <SharedLinkCard share={message.share} />}
                     {message.call_duration !== undefined && <p className="text-sm opacity-80">📞 Call · {formatCallLength(message.call_duration)}</p>}
                     {message.is_unsent && <p className="text-sm italic opacity-70">This message was unsent.</p>}
@@ -346,6 +347,25 @@ const SettingsModal: React.FC<{
     participants, currentAlignment, onAlignmentChange, customAvatars
 }) => {
     if (!isOpen) return null;
+
+    if (isPhoneApp()) return (
+        <PhoneSettingsPage title="Display Settings" onClose={onClose}>
+            <SettingsHeading hint="Choose which person's messages appear on the right.">Message alignment</SettingsHeading>
+            <div role="radiogroup" aria-label="Message alignment">
+                {participants.map(p => <SettingsChoice key={p.name} title={p.name} leading={<UserAvatar name={p.name} className="w-9 h-9" imageUrl={customAvatars[p.name]} />} selected={currentAlignment === p.name} onSelect={() => onAlignmentChange(p.name)} accent={ACCENTS.pink} />)}
+            </div>
+            <SettingsHeading>Appearance</SettingsHeading>
+            <SettingsSwitch label="Show avatars" checked={showAvatars} onChange={onShowAvatarsChange} accent={ACCENTS.pink} />
+            <SettingsHeading>Chat wallpaper</SettingsHeading>
+            <div className="px-4 pb-2"><WallpaperPicker value={wallpaper} onChange={onWallpaperChange} onUpload={onUploadBackground} ringClass="ring-pink-500" tone="pink" dark={document.documentElement.classList.contains('dark')} /></div>
+            <SettingsHeading>Chat theme</SettingsHeading>
+            <div className="flex items-center gap-4 px-4 pb-8">
+                {Object.entries(THEMES).map(([themeKey, { name, gradient, ring }]) => (
+                    <button type="button" key={themeKey} aria-label={name} onClick={() => onThemeChange(themeKey)} className={`w-10 h-10 rounded-full ${gradient} ${currentTheme === themeKey ? `ring-2 ring-offset-2 ${ring} dark:ring-offset-slate-900` : ''}`} />
+                ))}
+            </div>
+        </PhoneSettingsPage>
+    );
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-30" onClick={onClose}>
@@ -522,6 +542,9 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
     const [showAvatars, setShowAvatars] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState<'messages' | 'media' | 'library'>('messages');
+    const [phoneSearch, setPhoneSearch] = useState(false);
+    const keyboardOpen = useKeyboardOpen();
+    const openPhoneSearch = () => { setPhoneSearch(true); window.setTimeout(() => document.querySelector<HTMLInputElement>('[data-chat-search]')?.focus(), 60); };
     const [customAvatars, setCustomAvatars] = useState<Record<string, string>>({});
     const [chatThemes, setChatThemes] = useState<Record<string, string>>(prefs.chatTheme ?? {});
     const [chatBackgrounds, setChatBackgrounds] = useState<Record<string, string | null>>(prefs.wallpaper ?? {});
@@ -690,6 +713,7 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
     const handleJumpFromSearch = useCallback((messageId: string) => {
         setHitNav({ ids: hitIds, index: Math.max(0, hitIds.indexOf(messageId)) });
         setSearchQuery('');
+        setPhoneSearch(false);
         setPendingJumpId(messageId);
     }, [hitIds]);
     const stepHit = (delta: number) => {
@@ -901,7 +925,7 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
                                 </div>
                            </div>
                            <div className="flex-shrink-0 flex items-center gap-2 mobile:contents">
-                               {activeTab === 'messages' && <div className="relative mobile:order-4 mobile:basis-full">
+                               {activeTab === 'messages' && <div className={`relative mobile:order-4 mobile:basis-full ${phoneSearch ? '' : 'mobile:hidden'}`}>
                                     <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
                                         <SearchIcon className="w-5 h-5 text-slate-400 dark:text-slate-500" />
                                     </span>
@@ -911,14 +935,17 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
                                         placeholder="Search..."
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}
-                                        className="w-full max-w-[120px] sm:max-w-[200px] mobile:max-w-none rounded-full border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 py-1.5 pl-10 pr-8 text-sm text-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-pink-500 transition-all duration-300"
+                                        className="w-full max-w-[120px] sm:max-w-[200px] mobile:max-w-none mobile:pr-28 rounded-full border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 py-1.5 pl-10 pr-8 text-sm text-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-pink-500 transition-all duration-300"
                                     />
                                      {isSearching && (
-                                        <button onClick={() => setSearchQuery('')} className="absolute inset-y-0 right-0 flex items-center pr-2 group">
+                                        <button onClick={() => setSearchQuery('')} className="absolute inset-y-0 right-0 flex items-center pr-2 group mobile:hidden">
                                             <XCircleIcon className="w-5 h-5 text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300 transition-colors" />
                                         </button>
                                     )}
+                                    <button type="button" onClick={() => { setSearchQuery(''); setPhoneSearch(false); }} className="hidden mobile:flex absolute inset-y-0 right-0 items-center pr-3 text-slate-500 dark:text-slate-300" aria-label="Close search">✕</button>
+{isSearching && hitIds.length > 0 && <button type="button" onClick={() => handleJumpFromSearch(hitIds[0])} className="hidden mobile:flex absolute inset-y-0 right-9 items-center px-2 text-sm font-semibold text-sky-500 dark:text-sky-300" aria-label="Step through matches">Browse ↑↓</button>}
                                 </div>}
+                                {activeTab === 'messages' && <button type="button" onClick={openPhoneSearch} className="hidden mobile:block mobile:order-2 p-2 rounded-full" aria-label="Search"><SearchIcon className="w-6 h-6 text-slate-600 dark:text-slate-300" /></button>}
                                 <button
                                     onClick={() => setIsCalendarOpen(open => !open)}
                                     className="mobile:order-2 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
@@ -928,22 +955,23 @@ const InstagramChatViewer: React.FC<InstagramChatViewerProps> = ({ chats, ownerN
                                 </button>
                                  <button
                                     onClick={onThemeToggle}
-                                    className="mobile:order-2 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                                    className="mobile:hidden p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                                     aria-label="Toggle theme"
                                 >
                                     {theme === 'light' ? <MoonIcon className="w-6 h-6 text-slate-600" /> : <SunIcon className="w-6 h-6 text-yellow-400" />}
                                 </button>
                                 <button
                                     onClick={() => setIsSettingsOpen(true)}
-                                    className="mobile:order-2 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                                    className="mobile:hidden p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                                     aria-label="Chat settings"
                                 >
                                     <SettingsIcon className="w-6 h-6 text-slate-600 dark:text-slate-300" />
                                 </button>
+                                <PhoneMenu order="mobile:order-2" items={[{ label: theme === 'light' ? 'Dark mode' : 'Light mode', onClick: onThemeToggle }, { label: 'Chat settings', onClick: () => setIsSettingsOpen(true) }]} />
                            </div>
                         </header>
 
-                        <div className="flex-shrink-0 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 flex items-center gap-4 mobile:order-last mobile:border-b-0 mobile:border-t mobile:px-0 mobile:gap-0 mobile:pb-[max(env(safe-area-inset-bottom),20px)]">
+                        <div className={`flex-shrink-0 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 flex items-center gap-4 mobile:order-last mobile:border-b-0 mobile:border-t mobile:px-0 mobile:gap-0 mobile:pb-[max(env(safe-area-inset-bottom),20px)] ${keyboardOpen ? 'mobile:hidden' : ''}`}>
                              <button onClick={() => setActiveTab('messages')} className={`mobile:flex-1 mobile:py-3.5 py-3 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'messages' ? 'border-pink-500 text-pink-600' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}>
                                 Messages
                             </button>

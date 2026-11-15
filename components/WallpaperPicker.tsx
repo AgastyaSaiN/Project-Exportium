@@ -17,7 +17,7 @@ interface WallpaperPickerProps {
 
 /** Wallpaper swatches for a chat's settings: the textures, the colours, none, or an image of your own. */
 const WallpaperPicker: React.FC<WallpaperPickerProps> = ({ value, onChange, onUpload, ringClass = 'ring-sky-500', tone, dark }) => {
-    const swatch = (active: boolean) => `relative h-16 rounded-lg border border-slate-300 dark:border-slate-600 overflow-hidden transition ${active ? `ring-2 ring-offset-2 dark:ring-offset-slate-800 ${ringClass}` : 'hover:scale-105'}`;
+    const swatch = (active: boolean) => `relative h-16 rounded-lg border border-slate-300 dark:border-slate-600 overflow-hidden transition mobile:transition-none mobile:[contain:paint] ${active ? `ring-2 ring-offset-2 dark:ring-offset-slate-800 ${ringClass}` : 'hover:scale-105 mobile:hover:scale-100'}`;
     const isUpload = !!value && !value.startsWith('wp:');
     const plainButton = 'bg-slate-100 dark:bg-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300';
 
@@ -42,7 +42,7 @@ const WallpaperPicker: React.FC<WallpaperPickerProps> = ({ value, onChange, onUp
     );
 
     return (
-        <div className="grid grid-cols-3 gap-2 max-h-72 overflow-y-auto pr-1" role="radiogroup" aria-label="Chat wallpaper">
+        <div className="grid grid-cols-3 gap-2 max-h-72 overflow-y-auto pr-1 mobile:max-h-none mobile:overflow-visible" role="radiogroup" aria-label="Chat wallpaper">
             {group('Texture')}
             {group('Colour')}
             <p className="col-span-3 mt-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Other</p>

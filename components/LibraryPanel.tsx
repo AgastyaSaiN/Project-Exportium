@@ -99,7 +99,7 @@ const LibraryPanel: React.FC<LibraryPanelProps> = ({ messages, starred, onToggle
                         {tab.label}{tab.count !== undefined ? ` (${tab.count.toLocaleString()})` : ''}
                     </button>
                 ))}
-                <div className="ml-auto flex items-center gap-2 text-sm mobile:w-full mobile:ml-0 mobile:justify-between">
+                <div className="ml-auto flex items-center gap-2 text-sm mobile:hidden">
                     <span className="text-slate-500 dark:text-slate-400">Save chat as</span>
                     <button type="button" onClick={() => saveText(toPlainText(chatTitle, messages), `${safeName}.txt`)} className="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 hover:bg-white dark:hover:bg-slate-700">Text</button>
                     <button type="button" onClick={() => saveText(toCsv(messages), `${safeName}.csv`, 'text/csv')} className="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 hover:bg-white dark:hover:bg-slate-700">CSV</button>
@@ -132,7 +132,7 @@ const LibraryPanel: React.FC<LibraryPanelProps> = ({ messages, starred, onToggle
                     ? <Empty>No files or documents in this chat.</Empty>
                     : <ul>{files.slice(0, 1000).map((entry, index) => (
                         <Row key={`${entry.message.id}-${index}`} message={entry.message} onJump={onJump} label={entry.name}
-                            extra={<button type="button" onClick={() => void saveMedia(media, entry.uri, entry.name)} className="text-sm font-semibold underline px-2">Save</button>} />
+                            extra={<button type="button" onClick={() => void saveMedia(media, entry.uri, entry.name)} className="text-sm font-semibold underline px-2 mobile:hidden">Save</button>} />
                     ))}</ul>)}
 
                 {section === 'insights' && insights && (
