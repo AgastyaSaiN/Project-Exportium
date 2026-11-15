@@ -10,9 +10,10 @@ import { LightboxProvider } from '../../../components/Lightbox';
 import type { LightboxItem } from '../../../components/Lightbox';
 import MediaTile from '../../../components/MediaTile';
 import { AttachmentChip } from '../../../components/Attachments';
-import { StarButton, StarProvider, HitNavigator, SearchFilters, NO_FILTERS, passesFilters } from '../../../components/ChatTools';
+import { StarButton, StarProvider, HitNavigator, SearchFilters, NO_FILTERS, passesFilters, PhoneMenu, useKeyboardOpen } from '../../../components/ChatTools';
 import type { SearchFilterValue } from '../../../components/ChatTools';
 import LibraryPanel from '../../../components/LibraryPanel';
+import { PhoneSettingsPage, SettingsHeading, SettingsChoice, ACCENTS, isPhoneApp } from '../../../components/PhoneSettings';
 import type { ToolMessage } from '../../../utils/chatData';
 import { useExportPrefs } from '../../../utils/storage';
 import { focusChatSearch, useChatShortcuts } from '../../../utils/useChatShortcuts';
@@ -115,11 +116,11 @@ const MessageBubble: React.FC<{
                 <ReplyPreview replyToId={message.reply_to_message_id} messageById={messageById} onJump={onJumpToMessage} />
             )}
 
-            {message.photo && <LazyMedia uri={message.photo} media={createBlobUrl} kind="image" className="max-w-xs sm:max-w-sm max-h-80 rounded-lg mb-1" natural />} 
-            {message.video_file && <LazyMedia uri={message.video_file} media={createBlobUrl} kind="video" className="max-w-xs sm:max-w-sm max-h-80 rounded-lg mb-1" natural />} 
+            {message.photo && <LazyMedia uri={message.photo} media={createBlobUrl} kind="image" className="max-w-xs sm:max-w-sm max-h-80 mobile:max-w-full mobile:max-h-[55vh] rounded-lg mb-1" natural />} 
+            {message.video_file && <LazyMedia uri={message.video_file} media={createBlobUrl} kind="video" className="max-w-xs sm:max-w-sm max-h-80 mobile:max-w-full mobile:max-h-[55vh] rounded-lg mb-1" natural />} 
             
             {message.sticker_file
-                ? <LazyMedia uri={message.sticker_file} media={createBlobUrl} kind="image" className="w-32 h-32 object-contain" natural enlargeable={false} />
+                ? <LazyMedia uri={message.sticker_file} media={createBlobUrl} kind="image" className="w-32 h-32 mobile:w-36 mobile:h-36 object-contain" natural enlargeable={false} animated compact />
                 : message.sticker_emoji && <div className="text-6xl text-center my-2">{message.sticker_emoji}</div>}
             {message.voice_message && <LazyMedia uri={message.voice_message} media={createBlobUrl} kind="audio" />}
             {message.audio_file && <LazyMedia uri={message.audio_file} media={createBlobUrl} kind="audio" />}
@@ -144,7 +145,7 @@ const MessageBubble: React.FC<{
                 </div>
             )}
             
-            <div className={`whitespace-pre-wrap leading-relaxed text-slate-800 dark:text-slate-200 ${(message.photo || message.video_file) ? 'mt-1' : ''}`}>
+            <div className={`whitespace-pre-wrap mobile:[overflow-wrap:anywhere] leading-relaxed text-slate-800 dark:text-slate-200 ${(message.photo || message.video_file) ? 'mt-1' : ''}`}>
                 {renderTelegramText(message.text, searchQuery || '')}
             </div> 
             
@@ -167,6 +168,18 @@ interface Participant {
 const SettingsModal: React.FC<{ isOpen: boolean; onClose: () => void; currentParticipants: Set<Participant>; currentRightAlignedId: string; onRightAlignmentChange: (id: string) => void; wallpaper: string | null; onWallpaperChange: (value: string | null) => void; }> = ({ isOpen, onClose, currentParticipants, currentRightAlignedId, onRightAlignmentChange, wallpaper, onWallpaperChange }) => {
     if (!isOpen) return null;
     const participantsList: Participant[] = Array.from(currentParticipants);
+    if (isPhoneApp()) return (
+        <PhoneSettingsPage title="Settings" onClose={onClose}>
+            <SettingsHeading hint="Select yourself to align your messages to the right.">Who are you?</SettingsHeading>
+            <div role="radiogroup" aria-label="Who are you">
+                {participantsList.map((p: Participant) => (
+                    <SettingsChoice key={p.id} title={p.name} subtitle={p.id} leading={<div className="flex-none w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-bold text-slate-600 dark:text-slate-300">{p.name.charAt(0)}</div>} selected={currentRightAlignedId === p.id} onSelect={() => onRightAlignmentChange(p.id)} accent={ACCENTS.sky} />
+                ))}
+            </div>
+            <SettingsHeading>Chat wallpaper</SettingsHeading>
+            <div className="px-4 pb-8"><WallpaperPicker value={wallpaper} onChange={onWallpaperChange} ringClass="ring-sky-500" tone="sky" dark={document.documentElement.classList.contains('dark')} /></div>
+        </PhoneSettingsPage>
+    );
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-30" onClick={onClose}>
             <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-6 w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
@@ -266,6 +279,9 @@ const TelegramChatViewer: React.FC<TelegramChatViewerProps> = ({ chats, ownerId,
     const [customAvatars, setCustomAvatars] = useState<Record<string, string>>({});
     const [isSidebarVisible, setIsSidebarVisible] = useState(true);
     const [activeTab, setActiveTab] = useState<'messages' | 'media' | 'library'>('messages');
+    const [phoneSearch, setPhoneSearch] = useState(false);
+    const keyboardOpen = useKeyboardOpen();
+    const openPhoneSearch = () => { setPhoneSearch(true); window.setTimeout(() => document.querySelector<HTMLInputElement>('[data-chat-search]')?.focus(), 60); };
     const [isCalendarOpen, setIsCalendarOpen] = useState(false);
     
     // Identity State
@@ -411,6 +427,7 @@ const TelegramChatViewer: React.FC<TelegramChatViewerProps> = ({ chats, ownerId,
     const handleJumpFromSearch = (id: number) => {
         setHitNav({ ids: hitIds, index: Math.max(0, hitIds.indexOf(String(id))) });
         setSearchQuery('');
+        setPhoneSearch(false);
         setPendingJump(id);
     };
     const stepHit = (delta: number) => {
@@ -496,10 +513,10 @@ const TelegramChatViewer: React.FC<TelegramChatViewerProps> = ({ chats, ownerId,
             <aside className={`absolute md:relative w-full md:w-1/3 lg:w-1/4 border-r border-slate-200 dark:border-slate-700 flex flex-col transition-transform duration-300 ease-in-out z-10 bg-white dark:bg-slate-800 h-full ${isSidebarVisible ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
                 <header className="p-4 border-b border-slate-200 dark:border-slate-700 space-y-3">
                     <div>
-                        <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200">Your Chats</h2>
+                        <div className="flex items-center justify-between"><h2 className="text-xl font-bold text-slate-800 dark:text-slate-200">Your Chats</h2><button type="button" onClick={onReset} className="hidden mobile:inline-block px-3 py-1.5 bg-sky-500 text-white text-sm font-semibold rounded-lg">Home</button></div>
                         <p className="text-sm text-slate-500 dark:text-slate-400">{chats.length} conversations</p>
                         <button type="button" onClick={() => setIsGlobalSearchOpen(true)} className="mt-3 w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
-                        <span>Search all chats</span><kbd className="text-xs opacity-60">Ctrl+Shift+F</kbd>
+                        <span>Search all chats</span><kbd className="text-xs opacity-60 mobile:hidden">Ctrl+Shift+F</kbd>
                     </button>
                     </div>
                     <div className="relative">
@@ -522,25 +539,27 @@ const TelegramChatViewer: React.FC<TelegramChatViewerProps> = ({ chats, ownerId,
             <main className="flex flex-col w-full h-full">
                 {selectedChat ? (
                     <>
-                        <header className="p-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between shadow-sm gap-4 bg-white dark:bg-slate-800">
-                           <div className="flex items-center min-w-0">
-                                <button onClick={() => setIsSidebarVisible(true)} className="md:hidden p-2 mr-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700"><ArrowLeftIcon className="w-5 h-5 text-slate-600 dark:text-slate-300" /></button>
+                        <header className="p-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between shadow-sm gap-4 bg-white dark:bg-slate-800 mobile:flex-wrap mobile:gap-x-2 mobile:gap-y-2 mobile:px-2">
+                           <div onClick={() => { if (document.documentElement.classList.contains('native-mobile')) setActiveTab(t => (t === 'library' ? 'messages' : 'library')); }} className="flex items-center min-w-0 mobile:order-1 mobile:flex-1">
+                                <button onClick={(e) => { e.stopPropagation(); setIsSidebarVisible(true); }} className="md:hidden p-2 mr-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700"><ArrowLeftIcon className="w-5 h-5 text-slate-600 dark:text-slate-300" /></button>
                                 <UserAvatar name={selectedChat.name} className="w-11 h-11 text-lg" imageUrl={customAvatars[selectedChat.name]} onClick={(e) => { e.stopPropagation(); handleAvatarChangeClick(selectedChat.name); }}/>
                                 <div className="ml-4 truncate"><h3 className="text-xl font-bold text-slate-800 dark:text-slate-200 truncate">{selectedChat.name}</h3></div>
                            </div>
-                           <div className="flex-shrink-0 flex items-center gap-2">
-                               <div className="relative"><span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none"><SearchIcon className="w-5 h-5 text-slate-400 dark:text-slate-500" /></span><input type="text" data-chat-search placeholder="Search messages..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full max-w-[120px] sm:max-w-[200px] rounded-full border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 py-1.5 pl-10 pr-8 text-sm text-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-all duration-300" />{isSearching && (<button onClick={() => setSearchQuery('')} className="absolute inset-y-0 right-0 flex items-center pr-2 group"><XCircleIcon className="w-5 h-5 text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300 transition-colors" /></button>)}</div>
-                               <button onClick={() => setIsCalendarOpen(o => !o)} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"><CalendarDaysIcon className="w-6 h-6 text-slate-600 dark:text-slate-300" /></button>
-                               <button onClick={onThemeToggle} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">{theme === 'light' ? <MoonIcon className="w-6 h-6 text-slate-600" /> : <SunIcon className="w-6 h-6 text-yellow-400" />}</button>
-                               <button onClick={() => setIsSettingsOpen(true)} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"><SettingsIcon className="w-6 h-6 text-slate-600 dark:text-slate-300" /></button>
-                               <button onClick={onReset} className="px-4 py-2 bg-sky-500 text-white text-sm font-semibold rounded-lg hover:bg-sky-600 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500">Process Another</button>
+                           <div className="flex-shrink-0 flex items-center gap-2 mobile:contents">
+                               <div className={`relative mobile:order-4 mobile:basis-full ${activeTab !== 'messages' || !phoneSearch ? 'mobile:hidden' : ''}`}><span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none"><SearchIcon className="w-5 h-5 text-slate-400 dark:text-slate-500" /></span><input type="text" data-chat-search placeholder="Search messages..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full max-w-[120px] sm:max-w-[200px] mobile:max-w-none mobile:pr-28 rounded-full border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 py-1.5 pl-10 pr-8 text-sm text-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-all duration-300" />{isSearching && (<button onClick={() => setSearchQuery('')} className="absolute inset-y-0 right-0 flex items-center pr-2 group mobile:hidden"><XCircleIcon className="w-5 h-5 text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300 transition-colors" /></button>)}<button type="button" onClick={() => { setSearchQuery(''); setPhoneSearch(false); }} className="hidden mobile:flex absolute inset-y-0 right-0 items-center pr-3 text-slate-500 dark:text-slate-300" aria-label="Close search">✕</button>
+{isSearching && hitIds.length > 0 && <button type="button" onClick={() => handleJumpFromSearch(Number(hitIds[0]))} className="hidden mobile:flex absolute inset-y-0 right-9 items-center px-2 text-sm font-semibold text-sky-500 dark:text-sky-300" aria-label="Step through matches">Browse ↑↓</button>}</div>
+                               {activeTab === 'messages' && <button type="button" onClick={openPhoneSearch} className="hidden mobile:block mobile:order-2 p-2 rounded-full" aria-label="Search"><SearchIcon className="w-6 h-6 text-slate-600 dark:text-slate-300" /></button>}
+                               <button onClick={() => setIsCalendarOpen(o => !o)} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors mobile:order-2"><CalendarDaysIcon className="w-6 h-6 text-slate-600 dark:text-slate-300" /></button>
+                               <button onClick={onThemeToggle} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors mobile:hidden">{theme === 'light' ? <MoonIcon className="w-6 h-6 text-slate-600" /> : <SunIcon className="w-6 h-6 text-yellow-400" />}</button>
+                               <button onClick={() => setIsSettingsOpen(true)} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors mobile:hidden"><SettingsIcon className="w-6 h-6 text-slate-600 dark:text-slate-300" /></button>
+                               <PhoneMenu order="mobile:order-2" items={[{ label: theme === 'light' ? 'Dark mode' : 'Light mode', onClick: onThemeToggle }, { label: 'Chat settings', onClick: () => setIsSettingsOpen(true) }, { label: 'Home', onClick: onReset }]} /><button onClick={onReset} className="px-4 py-2 bg-sky-500 text-white text-sm font-semibold rounded-lg hover:bg-sky-600 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 mobile:hidden"><span className="mobile:hidden">Process Another</span><span className="hidden mobile:inline">Home</span></button>
                            </div>
                         </header>
 
-                        <div className="flex-shrink-0 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 flex items-center gap-4">
-                            <button onClick={() => setActiveTab('messages')} className={`py-3 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'messages' ? 'border-sky-500 text-sky-600' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}>Messages</button>
-                            <button onClick={() => setActiveTab('media')} className={`py-3 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'media' ? 'border-sky-500 text-sky-600' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}>Media</button>
-                            <button onClick={() => setActiveTab('library')} className={`py-3 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'library' ? 'border-sky-500 text-sky-600' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}>Library{starredIds.size ? ` (${starredIds.size})` : ''}</button>
+                        <div className={`flex-shrink-0 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 flex items-center gap-4 mobile:order-last mobile:border-b-0 mobile:border-t mobile:px-0 mobile:gap-0 mobile:pb-[max(env(safe-area-inset-bottom),20px)] ${keyboardOpen ? 'mobile:hidden' : ''}`}>
+                            <button onClick={() => setActiveTab('messages')} className={`py-3 text-sm font-semibold border-b-2 transition-colors mobile:flex-1 mobile:py-3.5 ${activeTab === 'messages' ? 'border-sky-500 text-sky-600' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}>Messages</button>
+                            <button onClick={() => setActiveTab('media')} className={`py-3 text-sm font-semibold border-b-2 transition-colors mobile:flex-1 mobile:py-3.5 ${activeTab === 'media' ? 'border-sky-500 text-sky-600' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}>Media</button>
+                            <button onClick={() => setActiveTab('library')} className={`py-3 text-sm font-semibold border-b-2 transition-colors mobile:flex-1 mobile:py-3.5 ${activeTab === 'library' ? 'border-sky-500 text-sky-600' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}>Library{starredIds.size ? ` (${starredIds.size})` : ''}</button>
                         </div>
                         
                         <div className="flex-grow overflow-hidden relative">

@@ -1,7 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { INLINE_THUMBNAIL_WIDTH } from '../utils/mediaLoader';
 import type { MediaSource } from '../utils/mediaLoader';
-import { saveMedia } from '../utils/saveMedia';
+import { useBackToClose } from '../utils/useBackToClose';
+import { saveMedia, saveToPhone, shareFromPhone } from '../utils/saveMedia';
 
 export interface LightboxItem {
     uri: string;
@@ -108,7 +109,18 @@ const LightboxModal: React.FC<LightboxModalProps> = ({ item, position, total, me
     const [full, setFull] = useState<string | null>(null);
     const [failed, setFailed] = useState(false);
     const [zoomed, setZoomed] = useState(false);
+    const [note, setNote] = useState('');
+    const [busy, setBusy] = useState(false);
+    useBackToClose(onClose);
     const closeButton = useRef<HTMLButtonElement>(null);
+
+    const phoneAction = async (mode: 'save' | 'share') => {
+        setBusy(true); setNote(mode === 'save' ? 'Saving…' : '');
+        const result = await (mode === 'save' ? saveToPhone : shareFromPhone)(media, item.uri);
+        setBusy(false); setNote(result.message);
+    };
+    // A message about one picture should not follow you to the next.
+    useEffect(() => { setNote(''); }, [item.uri]);
 
     useEffect(() => { closeButton.current?.focus(); }, []);
 
@@ -150,13 +162,13 @@ const LightboxModal: React.FC<LightboxModalProps> = ({ item, position, total, me
             style={{ backgroundColor: 'rgba(0,0,0,0.92)' }}
             onClick={onClose}
         >
-            <div className="flex items-center justify-between gap-4 px-4 py-3 text-white" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between gap-4 px-4 py-3 mobile:pt-[max(env(safe-area-inset-top),40px)] text-white" onClick={e => e.stopPropagation()}>
                 <div className="min-w-0">
                     <p className="text-sm font-semibold truncate">{caption || 'Photo'}</p>
                     <p className="text-xs text-white/60">{position.toLocaleString()} of {total.toLocaleString()}</p>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
-                    <button type="button" onClick={() => void saveMedia(media, item.uri)} disabled={!full} className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-white/15 hover:bg-white/25 disabled:opacity-40 transition-colors" title="Save the original file">
+                    <button type="button" onClick={() => void saveMedia(media, item.uri)} disabled={!full} className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-white/15 hover:bg-white/25 disabled:opacity-40 transition-colors mobile:hidden" title="Save the original file">
                         Save
                     </button>
                     {onShowInChat && (
@@ -197,6 +209,15 @@ const LightboxModal: React.FC<LightboxModalProps> = ({ item, position, total, me
                         <ChevronIcon direction="right" />
                     </button>
                 )}
+            </div>
+
+            {/* Phone: Save to the phone's gallery, or Share with another app. */}
+            <div className="hidden mobile:flex flex-col items-center gap-2 pt-3 pb-[max(env(safe-area-inset-bottom),20px)] text-white" onClick={e => e.stopPropagation()}>
+                {note && <p className="text-sm text-white/80" role="status">{note}</p>}
+                <div className="flex gap-3">
+                    <button type="button" disabled={!full || busy} onClick={() => void phoneAction('save')} className="px-6 py-3 rounded-full bg-white/15 text-base font-semibold disabled:opacity-40">Save</button>
+                    <button type="button" disabled={!full || busy} onClick={() => void phoneAction('share')} className="px-6 py-3 rounded-full bg-white/15 text-base font-semibold disabled:opacity-40">Share</button>
+                </div>
             </div>
         </div>
     );

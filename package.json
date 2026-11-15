@@ -10,6 +10,10 @@
     "preview": "vite preview",
     "electron:dev": "concurrently -k \"vite\" \"wait-on tcp:3000 && tsc -p tsconfig.electron.json && electron .\"",
     "electron:build": "tsc -p tsconfig.electron.json && vite build && electron-builder",
+    "android:sync": "vite build && cap sync android",
+    "android:open": "cap open android",
+    "android:debug": "npm run android:sync && cd android && gradlew assembleDebug",
+    "android:bundle": "npm run android:sync && cd android && gradlew bundleRelease",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "lint": "eslint .",
@@ -17,6 +21,7 @@
     "test:e2e:desktop": "node e2e/desktop.e2e.mjs"
   },
   "dependencies": {
+    "@capacitor/core": "^8.6.0",
     "@fontsource/inter": "^5.3.0",
     "@tanstack/react-virtual": "^3.14.25",
     "@zip.js/zip.js": "^2.24.0",
@@ -26,6 +31,8 @@
     "react-router-dom": "^7.8.2"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/cli": "^8.6.0",
     "@eslint/js": "^9.39.5",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",

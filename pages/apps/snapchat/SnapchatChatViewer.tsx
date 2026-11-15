@@ -9,8 +9,9 @@ import LazyMedia from '../../../components/LazyMedia';
 import { LightboxProvider } from '../../../components/Lightbox';
 import type { LightboxItem } from '../../../components/Lightbox';
 import type { VirtualListHandle } from '../../../components/VirtualList';
-import { StarButton, StarProvider } from '../../../components/ChatTools';
+import { StarButton, StarProvider, PhoneMenu } from '../../../components/ChatTools';
 import LibraryPanel from '../../../components/LibraryPanel';
+import { PhoneSettingsPage, SettingsHeading, isPhoneApp } from '../../../components/PhoneSettings';
 import type { ToolMessage } from '../../../utils/chatData';
 import { useExportPrefs } from '../../../utils/storage';
 import { useChatShortcuts } from '../../../utils/useChatShortcuts';
@@ -78,7 +79,7 @@ const MessageBubble: React.FC<{ msg: InternalMessage, isOwner: boolean, media: M
                 {(msg.content || (!msg.media)) && (
                     <div className="px-3 py-2">
                         {msg.content ? (
-                            <p className="text-sm text-gray-200 whitespace-pre-wrap">{msg.content}</p>
+                            <p className="text-sm text-gray-200 whitespace-pre-wrap mobile:[overflow-wrap:anywhere]">{msg.content}</p>
                         ) : (
                             <p className="text-sm text-gray-500 italic uppercase font-bold text-[10px] tracking-wider">
                                 {msg.type}
@@ -96,6 +97,18 @@ const SettingsModal: React.FC<{ isOpen: boolean; onClose: () => void; currentOwn
     const [inputValue, setInputValue] = useState(currentOwner);
 
     if (!isOpen) return null;
+
+    if (isPhoneApp()) return (
+        <PhoneSettingsPage title="Viewer Settings" onClose={onClose} dark>
+            <SettingsHeading hint="Messages sent by this username will appear on the right side.">My username (alignment)</SettingsHeading>
+            <div className="flex gap-2 px-4 pb-2">
+                <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} className="flex-1 min-w-0 bg-black border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-yellow-400" placeholder="Enter username..." />
+                <button type="button" onClick={() => { onOwnerChange(inputValue); onClose(); }} className="flex-none bg-yellow-400 text-black font-bold px-4 py-2 rounded-lg">Save</button>
+            </div>
+            <SettingsHeading>Chat wallpaper</SettingsHeading>
+            <div className="px-4 pb-8"><WallpaperPicker value={wallpaper} onChange={onWallpaperChange} ringClass="ring-yellow-400" tone="yellow" dark /></div>
+        </PhoneSettingsPage>
+    );
 
     return (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -293,7 +306,7 @@ const SnapchatChatViewer: React.FC<SnapchatChatViewerProps> = ({ chats, owner, z
     return (
         <StarProvider starred={starredIds} onToggle={toggleStar}>
         <LightboxProvider items={chatMediaItems} media={mediaLoader.source} onShowInChat={(item) => { const row = rowIndexByMessageId.get(item.ref as string); if (row !== undefined) listRef.current?.scrollToIndex(row, 'center'); }}>
-        <div className="flex h-screen bg-black text-white overflow-hidden">
+        <div className="flex h-screen mobile:h-[100dvh] mobile:pt-[max(env(safe-area-inset-top),28px)] mobile:pb-[max(env(safe-area-inset-bottom),12px)] bg-black text-white overflow-hidden">
             <SettingsModal 
                 isOpen={isSettingsOpen} 
                 onClose={() => setIsSettingsOpen(false)} 
@@ -323,7 +336,7 @@ const SnapchatChatViewer: React.FC<SnapchatChatViewerProps> = ({ chats, owner, z
                         <SearchIcon className="w-4 h-4 text-gray-500 absolute left-3.5 top-2.5" />
                     </div>
                     <button type="button" onClick={() => setIsGlobalSearchOpen(true)} className="mt-2 w-full px-3 py-2 rounded-lg border border-gray-700 text-sm text-gray-300 hover:bg-gray-900 transition-colors text-left">
-                        Search all messages <span className="float-right text-xs opacity-60">Ctrl+Shift+F</span>
+                        Search all messages <span className="float-right text-xs opacity-60 mobile:hidden">Ctrl+Shift+F</span>
                     </button>
                 </div>
                 <div className="flex-1 overflow-y-auto">
@@ -353,8 +366,8 @@ const SnapchatChatViewer: React.FC<SnapchatChatViewerProps> = ({ chats, owner, z
                 {selectedChat ? (
                     <>
                         <div className="h-16 border-b border-gray-800 flex items-center justify-between px-4 bg-gray-900/50 backdrop-blur-sm">
-                            <div className="flex items-center gap-3">
-                                <button onClick={() => setSelectedChatId(null)} className="md:hidden p-2 -ml-2 hover:bg-gray-800 rounded-full">
+                            <div className="flex items-center gap-3 mobile:cursor-pointer mobile:flex-1 mobile:min-w-0" onClick={() => { if (document.documentElement.classList.contains('native-mobile')) setShowLibrary(v => !v); }}>
+                                <button onClick={(e) => { e.stopPropagation(); setSelectedChatId(null); }} className="md:hidden p-2 -ml-2 hover:bg-gray-800 rounded-full">
                                     <ArrowLeftIcon className="w-5 h-5" />
                                 </button>
                                 <Avatar name={selectedChat.participant} />
@@ -364,7 +377,7 @@ const SnapchatChatViewer: React.FC<SnapchatChatViewerProps> = ({ chats, owner, z
                             </div>
                             <button
                                 onClick={() => setShowLibrary(v => !v)}
-                                className={`ml-auto mr-2 px-3 py-1.5 rounded-full text-sm font-semibold transition-colors ${showLibrary ? 'bg-yellow-400 text-black' : 'bg-gray-800 text-gray-200 hover:bg-gray-700'}`}
+                                className={`mobile:hidden ml-auto mr-2 px-3 py-1.5 rounded-full text-sm font-semibold transition-colors ${showLibrary ? 'bg-yellow-400 text-black' : 'bg-gray-800 text-gray-200 hover:bg-gray-700'}`}
                             >
                                 {showLibrary ? 'Back to chat' : `Library${starredIds.size ? ` (${starredIds.size})` : ''}`}
                             </button>
@@ -377,10 +390,11 @@ const SnapchatChatViewer: React.FC<SnapchatChatViewerProps> = ({ chats, owner, z
                             </button>
                             <button
                                 onClick={() => setIsSettingsOpen(true)}
-                                className="p-2 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white transition-colors"
+                                className="mobile:hidden p-2 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white transition-colors"
                             >
                                 <SettingsIcon className="w-6 h-6" />
                             </button>
+                            <PhoneMenu dark order="mobile:order-last" items={[{ label: 'Chat settings', onClick: () => setIsSettingsOpen(true) }]} />
                         </div>
                         
                         <div className="relative"><CalendarPopover tone="yellow" startAt={selectedChat.messages[selectedChat.messages.length - 1]?.timestamp} isOpen={isCalendarOpen} onClose={() => setIsCalendarOpen(false)} onDateSelect={handleDateSelect} activeDays={activeDays} /></div>

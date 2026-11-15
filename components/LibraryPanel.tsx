@@ -99,7 +99,7 @@ const LibraryPanel: React.FC<LibraryPanelProps> = ({ messages, starred, onToggle
                         {tab.label}{tab.count !== undefined ? ` (${tab.count.toLocaleString()})` : ''}
                     </button>
                 ))}
-                <div className="ml-auto flex items-center gap-2 text-sm">
+                <div className="ml-auto flex items-center gap-2 text-sm mobile:hidden">
                     <span className="text-slate-500 dark:text-slate-400">Save chat as</span>
                     <button type="button" onClick={() => saveText(toPlainText(chatTitle, messages), `${safeName}.txt`)} className="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 hover:bg-white dark:hover:bg-slate-700">Text</button>
                     <button type="button" onClick={() => saveText(toCsv(messages), `${safeName}.csv`, 'text/csv')} className="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 hover:bg-white dark:hover:bg-slate-700">CSV</button>
@@ -109,7 +109,7 @@ const LibraryPanel: React.FC<LibraryPanelProps> = ({ messages, starred, onToggle
 
             <div className="flex-1 min-h-0 overflow-y-auto">
                 {section === 'starred' && (starredMessages.length === 0
-                    ? <Empty>Nothing starred yet. Hover a message and click the ☆ to keep it here.</Empty>
+                    ? <Empty>Nothing starred yet. <span className="mobile:hidden">Hover a message and click the ☆</span><span className="hidden mobile:inline">Press and hold a message, then choose Star</span> to keep it here.</Empty>
                     : <ul>{starredMessages.map(m => <Row key={m.id} message={m} onJump={onJump} extra={<button type="button" aria-label="Remove star" onClick={() => onToggleStar(m.id)} className="text-amber-500 text-lg px-2">★</button>} />)}</ul>)}
 
                 {section === 'day' && (days.length === 0
@@ -132,7 +132,7 @@ const LibraryPanel: React.FC<LibraryPanelProps> = ({ messages, starred, onToggle
                     ? <Empty>No files or documents in this chat.</Empty>
                     : <ul>{files.slice(0, 1000).map((entry, index) => (
                         <Row key={`${entry.message.id}-${index}`} message={entry.message} onJump={onJump} label={entry.name}
-                            extra={<button type="button" onClick={() => void saveMedia(media, entry.uri, entry.name)} className="text-sm font-semibold underline px-2">Save</button>} />
+                            extra={<button type="button" onClick={() => void saveMedia(media, entry.uri, entry.name)} className="text-sm font-semibold underline px-2 mobile:hidden">Save</button>} />
                     ))}</ul>)}
 
                 {section === 'insights' && insights && (

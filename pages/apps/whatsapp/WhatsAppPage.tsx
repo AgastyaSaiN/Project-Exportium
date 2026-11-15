@@ -303,7 +303,7 @@ const WhatsAppPage: React.FC<WhatsAppPageProps> = ({ platform }) => {
                 className="hidden"
                 accept=".txt,text/plain,.zip,application/zip"
             />
-            <div className="flex-grow flex items-center justify-center">
+            <div className="flex-grow flex items-center justify-center mobile:flex-col mobile:justify-start mobile:pt-6">
                 {renderContent()}
                 {status === 'idle' && <RecentExports platform="whatsapp" onOpen={(file) => void importFile(file)} />}
                 <DropOverlay show={dropping} label="Drop your WhatsApp export" />

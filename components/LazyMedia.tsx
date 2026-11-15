@@ -34,6 +34,12 @@ interface LazyMediaProps {
     natural?: boolean;
     /** Clicking a photo opens it full-size when a LightboxProvider is present (default). */
     enlargeable?: boolean;
+    /** Animated image (sticker, GIF): load the original file, because a thumbnail would freeze it on one frame. */
+    animated?: boolean;
+    /** A video that is really a GIF: plays by itself, silently, in a loop, with no controls. */
+    loop?: boolean;
+    /** A small placeholder (stickers) while the file loads. */
+    compact?: boolean;
 }
 
 /**
@@ -41,8 +47,9 @@ interface LazyMediaProps {
  * handing it back when it scrolls away (or the row is recycled by the virtual list) so the
  * loader can free its memory.
  */
-const LazyMedia: React.FC<LazyMediaProps> = ({ uri, media, kind, className = '', alt = 'Attachment', natural = false, enlargeable = true }) => {
+const LazyMedia: React.FC<LazyMediaProps> = ({ uri, media, kind, className = '', alt = 'Attachment', natural = false, enlargeable = true, animated = false, loop = false, compact = false }) => {
     const lightbox = useLightbox();
+    const onPhone = typeof document !== 'undefined' && document.documentElement.classList.contains('native-mobile');
     const [url, setUrl] = useState<string | null>(null);
     const [visible, setVisible] = useState(false);
     const [failed, setFailed] = useState(false);
@@ -61,7 +68,8 @@ const LazyMedia: React.FC<LazyMediaProps> = ({ uri, media, kind, className = '',
     useEffect(() => {
         if (!visible) return;
         let cancelled = false;
-        const options = kind === 'image' ? { thumbnail: INLINE_THUMBNAIL_WIDTH } : undefined;
+        // Animated stickers keep their original file so they can play: phone app only, the desktop app is unchanged.
+        const options = kind === 'image' && !(animated && onPhone) ? { thumbnail: INLINE_THUMBNAIL_WIDTH } : undefined;
         media(uri, options).then(result => {
             if (cancelled) return;
             if (result) setUrl(result); else setFailed(true);
@@ -71,12 +79,13 @@ const LazyMedia: React.FC<LazyMediaProps> = ({ uri, media, kind, className = '',
             media.release(uri, options);
             setUrl(null);
         };
-    }, [visible, uri, kind, media]);
+    }, [visible, uri, kind, media, animated, onPhone]);
 
     const shapeClass = natural ? 'self-start' : '';
 
     if (url) {
-        if (kind === 'video') return <video src={url} controls preload="metadata" className={`${className} ${shapeClass}`} />;
+        if (kind === 'video' && loop) return <video src={url} autoPlay loop muted playsInline className={`${className} ${shapeClass}`} />;
+        if (kind === 'video') return <video src={url} controls playsInline={onPhone} preload="metadata" className={`${className} ${shapeClass}`} />;
         if (kind === 'audio') return <audio src={url} controls className="w-full h-10" />;
         if (lightbox && enlargeable) {
             const enlarge = (event: React.SyntheticEvent) => { event.stopPropagation(); lightbox.open(uri); };
@@ -106,7 +115,7 @@ const LazyMedia: React.FC<LazyMediaProps> = ({ uri, media, kind, className = '',
     }
 
     const aspect = kind === 'video' ? 'aspect-video' : 'aspect-square';
-    const placeholderWidth = natural ? 'w-64 max-w-full self-start' : '';
+    const placeholderWidth = natural ? `w-64 max-w-full self-start${compact ? ' mobile:w-36' : ''}` : '';
     return (
         <div ref={placeholderRef} className={`${className} ${aspect} ${placeholderWidth} bg-slate-200 dark:bg-slate-700 flex items-center justify-center`}>
             {visible && !failed
