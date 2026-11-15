@@ -40,7 +40,7 @@ In the repository: Settings → Secrets and variables → Actions → New reposi
 
 Google needs a public web page. Easiest: with the repository public, use
 `https://github.com/AgastyaSaiN/Project-Exportium/blob/main/android/play-store/PRIVACY_POLICY.md`
-(after the branch is merged), or enable GitHub Pages. Fill in **[your contact email]** in the policy first.
+(after the branch is merged), or enable GitHub Pages. The contact email in the policy is already filled in.
 
 ### 5. Play Console (one-time)
 
